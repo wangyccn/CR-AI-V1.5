@@ -1,6 +1,4 @@
 import json
-from collections import defaultdict
-from functools import lru_cache
 
 import torch
 from torch.utils.data import Dataset
@@ -28,7 +26,7 @@ class LLMDataset(Dataset):
         self.data = raw_data[:split_idx] if mode == 'train' else raw_data[split_idx:]
 
         # 使用字典缓存已处理的输入
-        self.cache = defaultdict(dict)
+        self.cache = {}
 
     def _validate_data(self, data):
         """
@@ -42,7 +40,6 @@ class LLMDataset(Dataset):
             if not isinstance(item['prompt'], str) or not isinstance(item['completion'], str):
                 raise TypeError(f"Non-string values at index {idx}")
 
-    @lru_cache(maxsize=10000)
     def _process_text(self, text):
         """
         处理文本并编码为token ID
@@ -77,14 +74,15 @@ class LLMDataset(Dataset):
         :param idx: 数据项索引
         :return: input_ids 和 target_ids
         """
-        # 尝试从缓存中获取数据
+        # 检查缓存中是否有已处理的结果
         if idx in self.cache:
             return self.cache[idx]
 
         item = self.data[idx]
+        # 合并问题和答案文本
         full_text = f"{item['prompt']} {item['completion']} <eos>"
 
-        # 编码文本并处理
+        # 编码文本
         tokens = self._process_text(full_text)
         input_ids = self._truncate_pad(tokens[:-1])
         target_ids = self._truncate_pad(tokens[1:])

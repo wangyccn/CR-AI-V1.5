@@ -1,5 +1,5 @@
 import torch.nn as nn
-from model.moe import MoE
+from .moe import MoE
 
 class TransformerBlock(nn.Module):
     def __init__(self, dim, num_heads, num_experts=8):
@@ -11,18 +11,23 @@ class TransformerBlock(nn.Module):
         self.conv = nn.Conv1d(dim, dim, kernel_size=3, padding=1)
 
     def forward(self, x):
+        # 避免多次permute，优化内存使用
+        batch_size, seq_len, dim = x.size()
+
         # CNN处理：卷积操作
-        x = x.permute(0, 2, 1)  # (B, T, D) -> (B, D, T)
-        x = self.conv(x)  # 进行卷积操作
-        x = x.permute(0, 2, 1)  # (B, D, T) -> (B, T, D)
+        x = x.transpose(1, 2)  # (B, T, D) -> (B, D, T)
+        x = self.conv(x)  # 卷积处理
+        x = x.transpose(1, 2)  # (B, D, T) -> (B, T, D)
 
         # Transformer处理
-        attn_out, _ = self.attn(x, x, x)  # 注意力计算
+        attn_out, _ = self.attn(x, x, x)  # 自注意力计算
         x = self.norm1(x + attn_out)  # 残差连接 + LayerNorm
+
+        # MoE处理
         moe_out = self.moe(x)  # MoE模块计算
         x = self.norm2(x + moe_out)  # 残差连接 + LayerNorm
-        return x
 
+        return x
 
 class MegaLLM(nn.Module):
     def __init__(self, config):
@@ -35,7 +40,12 @@ class MegaLLM(nn.Module):
         self.head = nn.Linear(config.dim, config.vocab_size)  # 输出层
 
     def forward(self, x):
-        x = self.embed(x)  # 嵌入层计算
-        for layer in self.layers:  # Transformer层堆叠
+        # 嵌入层计算
+        x = self.embed(x)
+
+        # Transformer层堆叠
+        for layer in self.layers:
             x = layer(x)
-        return self.head(x)  # 输出预测
+
+        # 输出预测
+        return self.head(x)

@@ -5,12 +5,13 @@ from torch.cuda.amp import autocast, GradScaler
 from torch.optim import AdamW
 from torch.utils.data import DataLoader
 from tqdm import tqdm
+import torch.backends.cudnn as cudnn
+import os  # 新增导入 os 模块，用于检查文件是否存在
 
 from bpe.tokenizer import BpeTokenizer
 from model.architecture import MegaLLM
 from utils.config import load_config
 from utils.dataloader import LLMDataset
-
 
 class Trainer:
     def __init__(self, config_path):
@@ -20,17 +21,28 @@ class Trainer:
         # 设置设备为GPU（如果可用）
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
-        # 初始化BPE分词器
-        self.tokenizer = BpeTokenizer()
-
         # 初始化模型并移动到GPU
-        self.model = MegaLLM(self.config.model).to(self.device)  # 在此处将模型移到设备
+        self.model = MegaLLM(self.config.model).to(self.device)
 
         # 初始化优化器
         self.optim = AdamW(self.model.parameters(), lr=self.config.training.lr)
 
         # 使用GradScaler来支持混合精度训练
         self.scaler = GradScaler()
+
+        # Enable cudnn auto-tuner for convolution speedup if possible
+        cudnn.benchmark = True
+
+        # 设置tokenizer路径
+        self.tokenizer_path = str(__path__ / "tokenizer.json")
+
+        # 检查tokenizer.json文件是否存在
+        if os.path.exists(self.tokenizer_path):
+            print("Loading pre-trained tokenizer from tokenizer.json...")
+            self.tokenizer = BpeTokenizer.load(self.tokenizer_path)  # 加载现有tokenizer
+        else:
+            print("Tokenizer not found. Training new tokenizer...")
+            self.tokenizer = BpeTokenizer()  # 初始化一个新的tokenizer
 
     def load_data(self):
         # 加载训练数据并进行BPE分词
@@ -39,7 +51,11 @@ class Trainer:
 
         # 将训练数据转化为字符串并加入分词器
         training_text = ' '.join([item['prompt'] + item['completion'] for item in data])
-        self.tokenizer.train_from_iterator(training_text.split('\n'), self.config.model.vocab_size, min_freq=2)
+
+        # 如果tokenizer是新建的，就训练并保存
+        if not os.path.exists(self.tokenizer_path):
+            self.tokenizer.train_from_iterator(training_text.split('\n'), self.config.model.vocab_size, min_freq=2)
+            self.tokenizer.save(self.tokenizer_path)
 
         # 创建自定义数据集并初始化DataLoader
         self.dataset = LLMDataset(self.tokenizer, self.config.training.data_path)
@@ -49,7 +65,9 @@ class Trainer:
             shuffle=True,
             pin_memory=True if self.device.type == 'cuda' else False,
             collate_fn=LLMDataset.collate_fn,
-            num_workers=4  # 使用多线程加速数据加载
+            num_workers=self.config.training.num_workers,  # Dynamic number of workers
+            drop_last=True,
+            persistent_workers=True  # Keeps workers alive for faster loading in large datasets
         )
 
     def train_epoch(self):
@@ -85,12 +103,13 @@ class Trainer:
         return total_loss / len(self.loader)
 
     def save_model(self, path):
-        # 保存模型和分词器
-        torch.save({
-            'model': self.model.state_dict(),
-            'tokenizer': self.tokenizer,
+        # Save model and tokenizer with extra safety checks
+        checkpoint = {
+            'model_state_dict': self.model.state_dict(),
+            'tokenizer_state_dict': self.tokenizer,
             'config': self.config
-        }, path)
+        }
+        torch.save(checkpoint, path)
 
     def train(self):
         # 开始训练

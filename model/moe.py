@@ -2,7 +2,6 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-
 class MoE(nn.Module):
     def __init__(self, dim, num_experts=8, top_k=2):
         super().__init__()
@@ -18,17 +17,16 @@ class MoE(nn.Module):
         self.dim = dim  # 输入维度
 
     def forward(self, x):
-        gates = self.gate(x)  # 计算每个token的门控值
+        # 计算门控值并进行top_k选择
+        gates = self.gate(x)  # 获取每个token的门控值
         weights, indices = torch.topk(gates, self.top_k, dim=-1)  # 获取top_k专家
         weights = F.softmax(weights, dim=-1)  # 对top_k门控值做softmax归一化
 
-        results = torch.zeros_like(x)  # 初始化结果
-        # 对每个专家进行加权计算
-        for i in range(self.top_k):
-            expert_idx = indices[..., i]  # 获取top_k中第i个专家的索引
-            expert_mask = F.one_hot(expert_idx, num_classes=len(self.experts))  # 创建one-hot掩码
-            expert_output = torch.stack([e(x) for e in self.experts], dim=2)  # 获取每个专家的输出
-            expert_output = (expert_output * expert_mask.unsqueeze(-1)).sum(dim=2)  # 选择指定专家的输出
-            results += expert_output * weights[..., i].unsqueeze(-1)  # 对输出加权
+        # 预先计算所有专家的输出
+        expert_outputs = torch.stack([e(x) for e in self.experts], dim=2)  # [batch_size, seq_len, num_experts, dim]
 
-        return results
+        # 使用批量操作进行专家选择和加权计算
+        expert_mask = torch.gather(expert_outputs, dim=2, index=indices.unsqueeze(-1).expand(-1, -1, -1, self.dim))  # 选择top_k专家
+        weighted_expert_outputs = expert_mask * weights.unsqueeze(-1)  # 对输出加权
+
+        return weighted_expert_outputs.sum(dim=2)  # 聚合结果

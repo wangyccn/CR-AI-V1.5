@@ -134,3 +134,19 @@ class BpeTokenizer:
         :return: 特殊标记的token ID列表
         """
         return [self._tokenizer.token_to_id(token) for token in self._special_tokens]
+
+    def save(self, path: str):
+        """
+        Save the tokenizer with additional checks
+        :param path: 保存路径
+        """
+        self._tokenizer.save(path)
+        print(f"Tokenizer saved to {path}")
+
+    def load(self, path: str):
+        """
+        Load a saved tokenizer from file
+        :param path: Tokenizer file path
+        """
+        self._tokenizer = Tokenizer.from_file(path)
+        print(f"Tokenizer loaded from {path}")
