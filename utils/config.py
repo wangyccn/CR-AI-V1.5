@@ -19,7 +19,7 @@ class TrainingConfig:
     data_path: str
     save_dir: str
     save_interval: int
-
+    num_workers: int
 
 @dataclass
 class Config:

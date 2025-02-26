@@ -4,6 +4,19 @@ import torch
 from torch.utils.data import Dataset
 
 
+def _validate_data(data):
+    """
+    验证数据格式
+    :param data: 数据
+    """
+    required_keys = ['prompt', 'completion']
+    for idx, item in enumerate(data):
+        if not all(k in item for k in required_keys):
+            raise ValueError(f"Invalid data format at index {idx}")
+        if not isinstance(item['prompt'], str) or not isinstance(item['completion'], str):
+            raise TypeError(f"Non-string values at index {idx}")
+
+
 class LLMDataset(Dataset):
     def __init__(self, tokenizer, json_path, max_length=2048, split_ratio=0.9, mode='train'):
         """
@@ -20,25 +33,13 @@ class LLMDataset(Dataset):
         # 读取并验证数据
         with open(json_path, 'r', encoding='utf-8') as f:
             raw_data = json.load(f)
-        self._validate_data(raw_data)
+        _validate_data(raw_data)
 
         split_idx = int(len(raw_data) * split_ratio)
         self.data = raw_data[:split_idx] if mode == 'train' else raw_data[split_idx:]
 
         # 使用字典缓存已处理的输入
         self.cache = {}
-
-    def _validate_data(self, data):
-        """
-        验证数据格式
-        :param data: 数据
-        """
-        required_keys = ['prompt', 'completion']
-        for idx, item in enumerate(data):
-            if not all(k in item for k in required_keys):
-                raise ValueError(f"Invalid data format at index {idx}")
-            if not isinstance(item['prompt'], str) or not isinstance(item['completion'], str):
-                raise TypeError(f"Non-string values at index {idx}")
 
     def _process_text(self, text):
         """

@@ -12,6 +12,7 @@
     "epochs": 100,
     "data_path": "data/train.json",
     "save_dir": "checkpoints",
-    "save_interval": 5
+    "save_interval": 5,
+    "num_workers": 4
   }
 }

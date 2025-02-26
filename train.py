@@ -6,7 +6,7 @@ from torch.optim import AdamW
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 import torch.backends.cudnn as cudnn
-import os  # 新增导入 os 模块，用于检查文件是否存在
+import os
 
 from bpe.tokenizer import BpeTokenizer
 from model.architecture import MegaLLM
@@ -34,12 +34,15 @@ class Trainer:
         cudnn.benchmark = True
 
         # 设置tokenizer路径
-        self.tokenizer_path = str(__path__ / "tokenizer.json")
+        self.tokenizer_path = os.path.join(os.path.dirname(__file__), "tokenizer.json")
 
         # 检查tokenizer.json文件是否存在
         if os.path.exists(self.tokenizer_path):
             print("Loading pre-trained tokenizer from tokenizer.json...")
-            self.tokenizer = BpeTokenizer.load(self.tokenizer_path)  # 加载现有tokenizer
+
+            # 确保传递了正确的位置参数
+            BPE_tokenizer = BpeTokenizer()
+            self.tokenizer = BPE_tokenizer.load(self.tokenizer_path)
         else:
             print("Tokenizer not found. Training new tokenizer...")
             self.tokenizer = BpeTokenizer()  # 初始化一个新的tokenizer
@@ -65,42 +68,58 @@ class Trainer:
             shuffle=True,
             pin_memory=True if self.device.type == 'cuda' else False,
             collate_fn=LLMDataset.collate_fn,
-            num_workers=self.config.training.num_workers,  # Dynamic number of workers
+            num_workers=min(4, self.config.training.num_workers),
             drop_last=True,
-            persistent_workers=True  # Keeps workers alive for faster loading in large datasets
+            persistent_workers=True
         )
 
     def train_epoch(self):
         self.model.train()
         total_loss = 0
-        accumulation_steps = 4  # Gradually accumulate gradients over smaller batches
+        accumulation_steps = 4
+        processed_batches = 0  # 跟踪实际处理的批次
         progress_bar = tqdm(self.loader, desc="Training", total=len(self.loader))
 
+        if len(self.loader) == 0:
+            raise RuntimeError("DataLoader returned no batches. Check dataset and batch size.")
+
         for batch_idx, batch in enumerate(progress_bar):
-            self.optim.zero_grad()
+            inputs = batch['input_ids'].to(self.device, non_blocking=True)
+            targets = batch['target_ids'].to(self.device, non_blocking=True)
+
+            # 手动检查数据
+            print(f"Batch {batch_idx}: input_ids shape={inputs.shape}, target_ids shape={targets.shape}")
 
             with autocast():
-                inputs = batch['input_ids'].to(self.device, non_blocking=True)
-                targets = batch['target_ids'].to(self.device, non_blocking=True)
-
                 outputs = self.model(inputs)
                 loss = F.cross_entropy(outputs.view(-1, self.config.model.vocab_size), targets.view(-1))
 
+            if torch.isnan(loss).any():
+                raise ValueError("Loss is NaN. Check model and data.")
+
             self.scaler.scale(loss).backward()
 
-            # Perform the optimizer step every 'accumulation_steps' batches
             if (batch_idx + 1) % accumulation_steps == 0:
                 self.scaler.step(self.optim)
                 self.scaler.update()
                 self.optim.zero_grad()
 
             total_loss += loss.item()
-            progress_bar.set_postfix(loss=total_loss / (batch_idx + 1))
-
-            # Clear memory cache
+            processed_batches += 1
+            avg_loss = total_loss / processed_batches
+            progress_bar.set_postfix(loss=avg_loss)
             torch.cuda.empty_cache()
 
-        return total_loss / len(self.loader)
+        # 处理剩余的梯度
+        if processed_batches % accumulation_steps != 0:
+            self.scaler.step(self.optim)
+            self.scaler.update()
+            self.optim.zero_grad()
+
+        if processed_batches == 0:
+            raise ValueError("No batches processed. Adjust batch size or check data.")
+
+        return total_loss / processed_batches
 
     def save_model(self, path):
         # Save model and tokenizer with extra safety checks
