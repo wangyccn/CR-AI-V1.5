@@ -4,7 +4,11 @@
     "dim": 1024,
     "num_layers": 32,
     "num_heads": 16,
-    "num_experts": 8
+    "num_experts": 8,
+    "use_longformer": false,
+    "multimodal": true,
+    "image_dim": 512,
+    "max_seq_len": 8192
   },
   "training": {
     "batch_size": 32,
@@ -13,6 +17,10 @@
     "data_path": "data/train.json",
     "save_dir": "checkpoints",
     "save_interval": 5,
-    "num_workers": 4
+    "num_workers": 4,
+    "min_batch_size": 8,
+    "max_batch_size": 128,
+    "fp16": true,
+    "grad_accum_steps": 4
   }
 }

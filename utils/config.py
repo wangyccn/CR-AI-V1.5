@@ -9,9 +9,12 @@ class ModelConfig:
     num_layers: int
     num_heads: int
     num_experts: int
+    use_longformer: bool = False
+    multimodal: bool = False  # 新增多模态支持
+    image_dim: int = 512  # 图像特征维度
+    max_seq_len: int = 8192  # 最大序列长度
 
-
-@dataclass
+@dataclass 
 class TrainingConfig:
     batch_size: int
     lr: float
@@ -20,6 +23,13 @@ class TrainingConfig:
     save_dir: str
     save_interval: int
     num_workers: int
+    min_batch_size: int = 8  # 最小批次大小
+    max_batch_size: int = 128  # 最大批次大小
+    warmup_steps: int = 2000  # 学习率预热步数
+    grad_accum_steps: int = 4  # 梯度累积步数
+    fp16: bool = True  # 混合精度训练
+    bf16: bool = False
+
 
 @dataclass
 class Config:
