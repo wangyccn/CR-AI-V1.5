@@ -1,3 +1,11 @@
+"""模型架构实现模块
+
+包含以下主要组件:
+1. MultiModalEncoder: 多模态编码器
+2. TransformerBlock: Transformer基础块
+3. MegaLLM: 主模型架构
+"""
+
 import torch
 import torch.nn as nn
 from .longformer_attention import LongformerAttention
@@ -8,7 +16,22 @@ from torchvision import models
 from torch.nn import functional as F
 
 class MultiModalEncoder(nn.Module):
+    """多模态编码器
+    
+    实现视觉特征的编码和投影
+    
+    属性:
+        vision_encoder (nn.Sequential): 视觉特征编码器
+        vision_proj (nn.Linear): 视觉特征投影层
+        image_norm (RMSNorm): 图像特征归一化层
+    """
     def __init__(self, image_dim=2048, text_dim=2048):
+        """初始化多模态编码器
+        
+        参数:
+            image_dim (int): 图像特征维度(默认为2048)
+            text_dim (int): 文本特征维度(默认为2048)
+        """
         super().__init__()
         try:
             # 使用更高效的权重加载方式
@@ -24,13 +47,48 @@ class MultiModalEncoder(nn.Module):
             raise RuntimeError(f"初始化视觉编码器失败: {str(e)}")
 
     def forward(self, images):
+        """前向传播
+        
+        参数:
+            images (Tensor): 输入图像张量
+            
+        返回:
+            Tensor: 编码后的图像特征
+        """
         vision_features = self.vision_encoder(images)
         vision_features = vision_features.flatten(start_dim=2).mean(dim=2)
         vision_features = self.vision_proj(vision_features)
         return self.image_norm(vision_features)
 
 class TransformerBlock(nn.Module):
+    """Transformer基础块
+    
+    实现包含以下组件的Transformer层:
+    - 稀疏注意力或Longformer注意力
+    - MoE层
+    - 前馈网络
+    - 旋转位置编码
+    
+    属性:
+        use_rotary (bool): 是否使用旋转位置编码
+        dim (int): 特征维度
+        num_heads (int): 注意力头数
+        attn (nn.Module): 注意力层
+        norm1 (RMSNorm): 第一层归一化
+        norm2 (RMSNorm): 第二层归一化
+        moe (MoE): 混合专家层
+        ffn (nn.Sequential): 前馈网络
+    """
     def __init__(self, dim, num_heads=8, num_experts=8, use_longformer=False, use_rotary=True):
+        """初始化Transformer块
+        
+        参数:
+            dim (int): 特征维度
+            num_heads (int): 注意力头数(默认为8)
+            num_experts (int): 专家数量(默认为8)
+            use_longformer (bool): 是否使用Longformer注意力(默认为False)
+            use_rotary (bool): 是否使用旋转位置编码(默认为True)
+        """
         super().__init__()
         self.use_rotary = use_rotary
         self.dim = dim
@@ -57,6 +115,15 @@ class TransformerBlock(nn.Module):
             )
 
     def _create_rotary_embedding(self, dim, max_seq_len):
+        """创建旋转位置编码
+        
+        参数:
+            dim (int): 每个头的维度
+            max_seq_len (int): 最大序列长度
+            
+        返回:
+            Tensor: 旋转位置编码张量
+        """
         inv_freq = 1.0 / (10000 ** (torch.arange(0, dim, 2).float() / dim))
         pos = torch.arange(max_seq_len)
         sinusoid = torch.einsum('i,j->ij', pos, inv_freq)
@@ -95,6 +162,19 @@ class MegaLLM(nn.Module):
         self.config = config
         self.embed = ParallelEmbedding(config.vocab_size, config.dim)
         self.modal_encoder = MultiModalEncoder(config.dim, config.dim)
+        
+        # 使用更高效的Flash Attention
+        self.use_flash_attention = hasattr(torch.nn.functional, 'scaled_dot_product_attention')
+        
+        # 添加LoRA适配器
+        self.lora_adapters = nn.ModuleDict({
+            'query': nn.Linear(config.dim, config.dim, bias=False),
+            'key': nn.Linear(config.dim, config.dim, bias=False),
+            'value': nn.Linear(config.dim, config.dim, bias=False)
+        })
+        
+        # 添加专家选择门控
+        self.expert_gate = nn.Linear(config.dim, config.num_experts)
         
         # 添加模态类型嵌入
         self.modal_type_embeddings = nn.Embedding(2, config.dim)  # 0: text, 1: image
@@ -148,6 +228,19 @@ class MegaLLM(nn.Module):
         for layer in self.layers:
             # 传递注意力掩码
             if hasattr(layer, 'attn') and hasattr(layer.attn, 'forward') and 'attention_mask' in layer.attn.forward.__code__.co_varnames:
+                # 修改transformer层处理
+                for layer in self.layers:
+                    # 添加LoRA适配
+                    if hasattr(self, 'lora_adapters'):
+                        q = x + self.lora_adapters['query'](x)
+                        k = x + self.lora_adapters['key'](x)
+                        v = x + self.lora_adapters['value'](x)
+                        
+                        if self.use_flash_attention:
+                            x = F.scaled_dot_product_attention(q, k, v, attn_mask=attention_mask)
+                        else:
+                            x = layer(x, image_features if images is not None else None)
+                        
                 x = layer(x, image_features if images is not None else None, attention_mask=attention_mask)
             else:
                 x = layer(x, image_features if images is not None else None)

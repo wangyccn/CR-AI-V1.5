@@ -1,3 +1,17 @@
+"""MegaLLM Flask 应用接口
+
+提供基于HTTP的模型推理服务，支持:
+- 文本生成
+- 多模态输入
+- 参数调节
+
+API端点:
+    POST /predict - 执行模型推理
+
+运行方式:
+    python app.py
+"""
+
 import os
 from flask import Flask, request, jsonify
 import base64
@@ -5,6 +19,7 @@ from PIL import Image
 import io
 from model import ModelLoader
 from tokenizers import Tokenizer
+import torch  # 添加缺失的导入
 
 app = Flask(__name__)
 
@@ -17,10 +32,26 @@ config_path = os.path.join(base_path, 'config.json')
 tokenizer_path = os.path.join(base_path, 'tokenizer.json')
 
 # 加载模型和分词器
-model_loader = ModelLoader(model_path=model_path, config_path=config_path)
+model_loader = ModelLoader(
+    model_path=model_path, 
+    config_path=config_path,
+    device='cuda' if torch.cuda.is_available() else 'cpu',
+    quantize=True  # 启用量化以优化性能
+)
 tokenizer = Tokenizer.from_file(tokenizer_path)
 
 def process_base64_image(base64_string):
+    """解码base64编码的图像
+    
+    Args:
+        base64_string: base64编码的图像字符串
+        
+    Returns:
+        Image: PIL图像对象
+        
+    Raises:
+        ValueError: 如果解码失败
+    """
     try:
         # 移除base64头信息
         if ',' in base64_string:
@@ -35,6 +66,27 @@ def process_base64_image(base64_string):
 
 @app.route('/predict', methods=['POST'])
 def predict():
+    """处理预测请求
+    
+    Request JSON格式:
+    {
+        "query": "输入文本",
+        "image": "base64图像(可选)",
+        "history": ["历史对话"(可选)],
+        "temperature": 温度值(可选),
+        "top_p": top_p值(可选),
+        "max_length": 最大长度(可选),
+        "num_beams": beam数(可选)
+    }
+    
+    Returns:
+        JSON: 包含响应或错误信息
+        
+    HTTP状态码:
+        200: 成功
+        400: 请求参数错误
+        500: 服务器内部错误
+    """
     try:
         data = request.get_json()
         query = data.get('query')
@@ -43,8 +95,10 @@ def predict():
             
         # 获取可选参数
         history = data.get('history', [])
-        temperature = data.get('temperature', 1.0)
-        top_p = data.get('top_p', 0.95)
+        temperature = float(data.get('temperature', 1.0))
+        top_p = float(data.get('top_p', 0.95))
+        max_length = int(data.get('max_length', 100)) if 'max_length' in data else None
+        num_beams = int(data.get('num_beams', 1))
         
         # 处理图像（如果有）
         image = None
@@ -57,7 +111,9 @@ def predict():
             image=image,
             history=history,
             temperature=temperature,
-            top_p=top_p
+            top_p=top_p,
+            max_length=max_length,
+            num_beams=num_beams
         )
         
         return jsonify({'response': response})
@@ -66,4 +122,5 @@ def predict():
         return jsonify({'error': str(e)}), 500
 
 if __name__ == '__main__':
-    app.run(debug=True, threaded=True)
+    """启动Flask应用"""
+    app.run(host='0.0.0.0', port=5000, threaded=True)

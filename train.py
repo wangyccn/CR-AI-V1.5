@@ -1,3 +1,19 @@
+"""MegaLLM 模型训练脚本
+
+该脚本实现了完整的模型训练流程，包括:
+- 数据加载与预处理
+- 模型训练与验证
+- 自动批次大小调整
+- 混合精度训练
+- 模型保存与恢复
+
+使用示例:
+    python train.py --config config.json
+
+主要类:
+    Trainer: 实现核心训练逻辑的类
+"""
+
 import json
 import torch
 import torch.nn.functional as F
@@ -8,6 +24,8 @@ from tqdm import tqdm
 import torch.backends.cudnn as cudnn
 import os
 from contextlib import nullcontext
+from torchvision import transforms
+from PIL import Image
 
 from bpe.tokenizer import BpeTokenizer
 from model.architecture import MegaLLM
@@ -15,7 +33,19 @@ from utils.config import load_config
 from utils.dataloader import LLMDataset
 
 class Trainer:
+    """MegaLLM 模型训练器
+    
+    实现完整的训练流程，包括数据加载、模型训练、验证和保存。
+    
+    Args:
+        config_path (str): 配置文件路径
+    """
     def __init__(self, config_path):
+        """初始化训练器
+        
+        Args:
+            config_path: 配置文件路径
+        """
         # 加载配置文件
         self.config = load_config(config_path)
 
@@ -77,12 +107,46 @@ class Trainer:
         else:
             print("Tokenizer not found. Will train new tokenizer...")
 
+        # 添加多模态支持
+        self.image_processor = transforms.Compose([
+            transforms.Resize((224, 224), interpolation=transforms.InterpolationMode.BICUBIC),
+            transforms.ToTensor(),
+            transforms.Normalize(mean=[0.48145466, 0.4578275, 0.40821073], 
+                               std=[0.26862954, 0.26130258, 0.27577711])
+        ])
+
     def load_data(self):
+        """加载并预处理训练数据
+        
+        包括:
+        - 加载JSON格式的训练数据
+        - 训练或加载BPE分词器
+        - 创建DataLoader
+        
+        Raises:
+            ValueError: 如果数据为空或格式不正确
+        """
         # 加载训练数据并进行BPE分词
         try:
             with open(self.config.training.data_path, 'r', encoding='utf-8') as f:
                 data = json.load(f)
                 
+            # 数据校验和处理多模态数据
+            processed_data = []
+            for item in data:
+                sample = {
+                    'prompt': item['prompt'],
+                    'completion': item['completion']
+                }
+                if 'image_path' in item:
+                    try:
+                        image = Image.open(item['image_path'])
+                        sample['image'] = self.image_processor(image)
+                    except Exception as e:
+                        print(f"加载图像 {item['image_path']} 失败: {e}")
+                        continue
+                processed_data.append(sample)
+            
             # 数据校验
             if not data:
                 raise ValueError("训练数据为空，请检查数据文件路径和内容")
@@ -137,6 +201,16 @@ class Trainer:
             raise
 
     class AutoBatchAdjuster:
+        """自动批次大小调整器
+        
+        根据GPU内存使用情况动态调整批次大小
+        
+        Attributes:
+            min_batch (int): 最小批次大小
+            max_batch (int): 最大批次大小
+            current_batch (int): 当前批次大小
+            oom_count (int): OOM错误计数
+        """
         def __init__(self, min_batch=8, max_batch=128):
             self.min_batch = min_batch
             self.max_batch = max_batch
@@ -170,6 +244,14 @@ class Trainer:
                     print(f"增加批次大小至 {self.current_batch}")
     
     def train_epoch(self):
+        """执行一个训练周期
+        
+        Returns:
+            float: 该周期的平均损失
+            
+        Raises:
+            ValueError: 如果没有处理任何批次
+        """
         self.model.train()
         total_loss = 0
         processed_batches = 0
@@ -195,7 +277,11 @@ class Trainer:
                 if 'images' in batch:
                     images = batch['images'].to(self.device)
                     with self.autocast:
-                        outputs = self.model(inputs, images=images)
+                        outputs = self.model(
+                            input_ids=inputs,
+                            images=images,
+                            attention_mask=attention_mask.to(self.device) if attention_mask is not None else None
+                        )
                 else:
                     with self.autocast:
                         # 检查模型是否接受attention_mask参数
@@ -266,6 +352,14 @@ class Trainer:
         return total_loss / processed_batches
 
     def save_model(self, path):
+        """保存模型和tokenizer到指定路径
+        
+        Args:
+            path (str): 模型保存路径
+            
+        Raises:
+            Exception: 如果保存失败
+        """
         # 确保保存目录存在
         os.makedirs(os.path.dirname(path), exist_ok=True)
         
@@ -288,8 +382,10 @@ class Trainer:
             raise
 
     def train(self):
-        print(f"开始训练 {self.config.training.epochs} 个周期...")
+        """执行完整训练流程
         
+        包括多个训练周期和定期保存模型
+        """
         try:
             # 开始训练
             for epoch in range(self.config.training.epochs):

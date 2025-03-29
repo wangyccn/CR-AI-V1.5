@@ -1,7 +1,28 @@
+"""Longformer注意力机制实现模块
+
+实现基于窗口的局部注意力机制，用于处理长序列输入
+"""
+
 import torch.nn as nn
 
 class LongformerAttention(nn.Module):
+    """Longformer注意力层
+    
+    实现基于窗口的局部注意力机制，适用于长序列处理
+    
+    属性:
+        dim (int): 输入特征维度
+        num_heads (int): 注意力头数
+        head_dim (int): 每个注意力头的维度
+        window_size (int): 注意力窗口大小
+    """
     def __init__(self, dim, num_heads=8):
+        """初始化Longformer注意力层
+        
+        参数:
+            dim (int): 输入特征维度
+            num_heads (int): 注意力头数(默认为8)
+        """
         super().__init__()
         self.dim = dim
         self.num_heads = num_heads
@@ -12,6 +33,14 @@ class LongformerAttention(nn.Module):
         self.window_size = 256  # 固定窗口大小
 
     def forward(self, x):
+        """前向传播
+        
+        参数:
+            x (Tensor): 输入张量，形状为[batch_size, seq_len, dim]
+            
+        返回:
+            Tensor: 输出张量，形状与输入相同
+        """
         B, T, D = x.size()
         H = self.num_heads
         HD = self.head_dim
