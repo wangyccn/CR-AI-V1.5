@@ -34,6 +34,7 @@ class ModelConfig:
         multimodal (bool): 是否支持多模态输入
         image_dim (int): 图像特征维度
         max_seq_len (int): 最大输入序列长度
+        pad_token_id (int): 填充token的ID
     """
     vocab_size: int
     dim: int
@@ -44,6 +45,7 @@ class ModelConfig:
     multimodal: bool = False  # 新增多模态支持
     image_dim: int = 512  # 图像特征维度
     max_seq_len: int = 8192  # 最大序列长度
+    pad_token_id: int = 0  # 新增填充token ID
 
 @dataclass 
 class TrainingConfig:

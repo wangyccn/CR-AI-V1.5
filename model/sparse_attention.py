@@ -3,7 +3,9 @@
 实现基于分块的稀疏注意力机制，用于处理长序列输入
 """
 
+import torch
 import torch.nn as nn
+import torch.nn.functional as F  # 添加这行导入
 
 class SparseAttention(nn.Module):
     """稀疏注意力层
@@ -43,14 +45,27 @@ class SparseAttention(nn.Module):
         B, T, D = x.size()
         H = self.num_heads
         BS = self.block_size
+        
+        # 确保序列长度能被block_size整除
+        if T % BS != 0:
+            padding_size = BS - (T % BS)
+            x = F.pad(x, (0, 0, 0, padding_size), "constant", 0)
+            T = x.size(1)
+        
         # 分块处理
-        x = x.view(B, -1, BS, D).permute(0, 2, 1, 3)
+        x = x.view(B, T // BS, BS, D).permute(0, 2, 1, 3)
         q = self.query(x).view(B, BS, -1, H, D//H).permute(0, 1, 3, 2, 4)
         k = self.key(x).view(B, BS, -1, H, D//H).permute(0, 1, 3, 4, 2)
         v = self.value(x).view(B, BS, -1, H, D//H).permute(0, 1, 3, 2, 4)
+        
         # 注意力计算
         attn = (q @ k) * (D**-0.5)
         attn = attn.softmax(dim=-1)
         out = (attn @ v).permute(0, 1, 3, 2, 4).reshape(B, BS, -1, D)
         out = out.permute(0, 2, 1, 3).reshape(B, T, D)
+        
+        # 如果之前填充了，去掉填充部分
+        if T != x.size(1):
+            out = out[:, :x.size(1), :]
+            
         return out

@@ -33,23 +33,18 @@ class LongformerAttention(nn.Module):
         self.window_size = 256  # 固定窗口大小
 
     def forward(self, x):
-        """前向传播
-        
-        参数:
-            x (Tensor): 输入张量，形状为[batch_size, seq_len, dim]
-            
-        返回:
-            Tensor: 输出张量，形状与输入相同
-        """
         B, T, D = x.size()
         H = self.num_heads
         HD = self.head_dim
+        
         # 计算查询、键和值
-        q = self.query(x).view(B, -1, H, HD).permute(0, 2, 1, 3)
-        k = self.key(x).view(B, -1, H, HD).permute(0, 2, 1, 3)
-        v = self.value(x).view(B, -1, H, HD).permute(0, 2, 1, 3)
+        q = self.query(x).view(B, T, H, HD).transpose(1, 2)
+        k = self.key(x).view(B, T, H, HD).transpose(1, 2)
+        v = self.value(x).view(B, T, H, HD).transpose(1, 2)
+        
         # 注意力计算
         attn = (q @ k.transpose(-2, -1)) * (D**-0.5)
         attn = attn.softmax(dim=-1)
-        out = (attn @ v).permute(0, 2, 1, 3).reshape(B, T, D)
+        out = (attn @ v).transpose(1, 2).reshape(B, T, D)
+        
         return out

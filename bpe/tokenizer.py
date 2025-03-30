@@ -19,8 +19,20 @@ class BpeTokenizer:
         self._special_tokens = ["<s>", "</s>", "<|user|>", "<|system|>", "<pad>", "<unk>"]
         self._tokenizer = Tokenizer(BPE(unk_token="<unk>"))
         
+        # 添加特殊token的ID映射
+        self.pad_token = "<pad>"
+        self.unk_token = "<unk>"
+        self.bos_token = "<s>"
+        self.eos_token = "</s>"
+        
         # 初始化时立即添加特殊标记以确保ID存在
         self._tokenizer.add_special_tokens(self._special_tokens)
+        
+        # 设置特殊token的ID
+        self.pad_token_id = self._tokenizer.token_to_id("<pad>")
+        self.unk_token_id = self._tokenizer.token_to_id("<unk>")
+        self.bos_token_id = self._tokenizer.token_to_id("<s>")
+        self.eos_token_id = self._tokenizer.token_to_id("</s>")
 
         # 配置分词器的正常化、预处理、解码和后处理器
         self._configure_tokenizer()

@@ -29,6 +29,11 @@ class MoE(nn.Module):
         super().__init__()
         self.dim = dim
         self.num_experts = num_experts
+        self.top_k = min(2, num_experts)  # 限制top_k不超过专家数量
+        self.temperature = 1.0
+        
+        # 添加门控层
+        self.gate = nn.Linear(dim, num_experts)
         
         # 使用更高效的专家结构
         self.experts = nn.ModuleList([
@@ -58,7 +63,7 @@ class MoE(nn.Module):
         返回:
             Tensor: 输出张量，形状与输入相同
         """
-        # 添加门控温度调节
+        # 门控计算
         gates = self.gate(x) / (self.temperature + 1e-6)
         
         # 使用top-k+gumbel softmax
