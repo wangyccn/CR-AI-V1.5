@@ -1,6 +1,6 @@
 # CR-AI-V1.5
 
-[Chinese|简体中文]()
+[Chinese|简体中文](REAEME-CN.md)
 
 ## Introduction
 
