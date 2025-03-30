@@ -371,9 +371,14 @@ class Trainer:
                 
                 # 每隔指定epoch保存模型
                 save_interval = int(getattr(self.config.training, 'save_interval', 10))
-                if (self.current_epoch) % save_interval == 0 or epoch == total_epochs - 1:
+                if (self.current_epoch) % save_interval == 0:
                     save_path = f"{self.config.training.save_dir}/model_epoch_{self.current_epoch}.pth"
                     self.save_model(save_path)
+                    
+            # 训练结束时保存最终模型到运行目录
+            final_path = "longformer_pretrained.pth"
+            self.save_model(final_path)
+            print(f"最终模型已保存到运行目录: {os.path.abspath(final_path)}")
                     
         except KeyboardInterrupt:
             print("\n训练被手动中断")

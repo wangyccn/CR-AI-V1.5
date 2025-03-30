@@ -58,7 +58,7 @@ for token_name, token in special_tokens.items():
 
 # 加载模型
 model_loader = ModelLoader(
-    model_path=model_path, 
+    # model_path=model_path, 
     config_path=config_path,
     device='cuda' if torch.cuda.is_available() else 'cpu',
     quantize=True

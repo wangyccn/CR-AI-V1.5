@@ -9,7 +9,8 @@
     "multimodal": true,
     "image_dim": 512,
     "max_seq_len": 8192,
-    "pad_token_id": 0
+    "pad_token_id": 0,
+    "model_path": "longformer_pretrained.pth"
   },
   "training": {
     "batch_size": 32,

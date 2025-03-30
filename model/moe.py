@@ -8,88 +8,49 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 class MoE(nn.Module):
-    """混合专家层
-    
-    实现基于门控机制的混合专家系统，支持:
-    - 动态专家选择
-    - 负载均衡损失
-    - 专家丢弃
-    
-    属性:
-        dim (int): 输入/输出特征维度
-        num_experts (int): 专家数量
-    """
     def __init__(self, dim, num_experts):
-        """初始化混合专家层
-        
-        参数:
-            dim (int): 输入/输出特征维度
-            num_experts (int): 专家数量
-        """
         super().__init__()
         self.dim = dim
         self.num_experts = num_experts
-        self.top_k = min(2, num_experts)  # 限制top_k不超过专家数量
-        self.temperature = 1.0
+        self.top_k = min(2, num_experts)
         
-        # 添加门控层
-        self.gate = nn.Linear(dim, num_experts)
+        # 更高效的门控计算
+        self.gate = nn.Sequential(
+            nn.Linear(dim, dim * 2),
+            nn.SiLU(),
+            nn.Linear(dim * 2, num_experts)
+        )
         
-        # 使用更高效的专家结构
+        # 共享专家第一层权重减少参数
+        shared_ff1 = nn.Linear(dim, dim * 4)
         self.experts = nn.ModuleList([
             nn.Sequential(
-                nn.Linear(dim, dim * 4),  # 专家前馈网络第一层
-                nn.SiLU(),                # 激活函数
-                nn.Linear(dim * 4, dim)   # 专家前馈网络第二层
+                shared_ff1,  # 共享第一层
+                nn.SiLU(),
+                nn.Linear(dim * 4, dim)  # 独立第二层
             ) for _ in range(num_experts)
         ])
         
-        # 添加专家丢弃率
-        self.expert_dropout = nn.Dropout(0.1)
-        
-        # 使用更稳定的初始化
-        for expert in self.experts:
-            nn.init.orthogonal_(expert[0].weight)  # 正交初始化第一层权重
-            nn.init.zeros_(expert[0].bias)         # 零初始化第一层偏置
-            nn.init.kaiming_normal_(expert[2].weight)  # Kaiming初始化第二层权重
-            nn.init.zeros_(expert[2].bias)             # 零初始化第二层偏置
+        # 使用梯度检查点节省内存
+        self.expert_checkpoint = torch.utils.checkpoint.checkpoint
 
     def forward(self, x):
-        """前向传播
+        # 更稳定的门控计算
+        gates = self.gate(x.detach())  # 分离梯度流
         
-        参数:
-            x (Tensor): 输入张量，形状为[batch_size, seq_len, dim]
+        # 使用top-k专家
+        weights, indices = torch.topk(gates, self.top_k, dim=-1)
+        weights = F.softmax(weights, dim=-1)
+        
+        # 使用梯度检查点
+        expert_outputs = []
+        for idx in indices.unique():
+            expert_out = self.expert_checkpoint(self.experts[idx], x)
+            expert_outputs.append(expert_out)
+        
+        # 组合专家输出
+        output = torch.zeros_like(x)
+        for i, (w, idx) in enumerate(zip(weights, indices)):
+            output[i] = expert_outputs[idx] * w.unsqueeze(-1)
             
-        返回:
-            Tensor: 输出张量，形状与输入相同
-        """
-        # 门控计算
-        gates = self.gate(x) / (self.temperature + 1e-6)
-        
-        # 使用top-k+gumbel softmax
-        if self.training:
-            gates = F.gumbel_softmax(gates, tau=0.1, hard=True, dim=-1)
-        else:
-            weights, indices = torch.topk(gates, self.top_k, dim=-1)
-            weights = F.softmax(weights, dim=-1)
-        
-        # 添加专家丢弃
-        expert_outputs = torch.stack([self.expert_dropout(e(x)) for e in self.experts], dim=2)
-        
-        # 计算负载均衡损失
-        expert_counts = torch.sum(torch.zeros_like(indices).scatter(1, indices, 1), dim=0)
-        expert_counts = (expert_counts / expert_counts.sum()).square().sum()
-        self.load_balance_loss = expert_counts
-        # 专家网络输出
-        all_expert_outputs = torch.stack([e(x) for e in self.experts], dim=2)
-        expert_outputs = torch.gather(all_expert_outputs, 2, indices.unsqueeze(-1).expand(*all_expert_outputs.size()[:3], self.dim))
-        outputs = (expert_outputs * weights.unsqueeze(-1)).sum(dim=2)
-        return outputs
-
-    def get_loss(self):
-        """获取负载均衡损失
-        
-        返回:
-            Tensor: 负载均衡损失值
-        """
-        return self.load_balance_loss
+        return output

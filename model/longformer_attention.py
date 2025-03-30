@@ -27,24 +27,28 @@ class LongformerAttention(nn.Module):
         self.dim = dim
         self.num_heads = num_heads
         self.head_dim = dim // num_heads
-        self.query = nn.Linear(dim, dim)
-        self.key = nn.Linear(dim, dim)
-        self.value = nn.Linear(dim, dim)
-        self.window_size = 256  # 固定窗口大小
-
+        # 使用更高效的线性层初始化
+        self.query = nn.Linear(dim, dim, bias=False)
+        self.key = nn.Linear(dim, dim, bias=False)
+        self.value = nn.Linear(dim, dim, bias=False)
+        self.window_size = 256
+        # 添加相对位置偏置
+        self.rel_pos_bias = nn.Parameter(torch.randn(1, num_heads, 2 * window_size - 1))
+        
     def forward(self, x):
         B, T, D = x.size()
-        H = self.num_heads
-        HD = self.head_dim
+        # 使用更高效的内存布局
+        q = self.query(x).view(B, T, self.num_heads, self.head_dim).transpose(1, 2)
+        k = self.key(x).view(B, T, self.num_heads, self.head_dim).transpose(1, 2)
+        v = self.value(x).view(B, T, self.num_heads, self.head_dim).transpose(1, 2)
         
-        # 计算查询、键和值
-        q = self.query(x).view(B, T, H, HD).transpose(1, 2)
-        k = self.key(x).view(B, T, H, HD).transpose(1, 2)
-        v = self.value(x).view(B, T, H, HD).transpose(1, 2)
-        
-        # 注意力计算
-        attn = (q @ k.transpose(-2, -1)) * (D**-0.5)
-        attn = attn.softmax(dim=-1)
-        out = (attn @ v).transpose(1, 2).reshape(B, T, D)
-        
-        return out
+        # 分块计算注意力
+        output = torch.zeros_like(x)
+        for i in range(0, T, self.window_size):
+            start, end = i, min(i + self.window_size, T)
+            # 添加相对位置偏置
+            attn = (q[:, :, start:end] @ k.transpose(-2, -1)) * (self.head_dim**-0.5)
+            attn += self._get_rel_pos_bias(start, end)
+            attn = attn.softmax(dim=-1)
+            output[:, start:end] = (attn @ v).transpose(1, 2).reshape(B, end-start, D)
+        return output

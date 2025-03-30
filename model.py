@@ -28,13 +28,13 @@ logger = logging.getLogger("ModelLoader")
 
 
 class ModelLoader:
-    def __init__(self, model_path: str, config_path: str, device: str = 'cuda',
+    def __init__(self, config_path: str, device: str = 'cuda',
                  dtype: torch.dtype = torch.float16, quantize: bool = False):
         """
         初始化模型加载器
         
         Args:
-            model_path: 模型权重路径
+            model_path: 模型权重路径(弃用并移除)
             config_path: 配置文件路径
             device: 运行设备，默认为'cuda'
             dtype: 模型精度，默认为float16
@@ -44,6 +44,11 @@ class ModelLoader:
         self.dtype = dtype
         self.quantize = quantize
         self.config = self._load_config(config_path)
+        model_config = self.config.get('model')
+        model_path = getattr(model_config, "model_path", "longformer_pretrained.pth")
+        base_path = os.path.dirname(os.path.abspath(__file__))
+        # 定义模型和配置文件的相对路径
+        model_path = os.path.join(base_path, model_path)
 
         # 添加缓存
         self._cache = {}
