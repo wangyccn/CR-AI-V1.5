@@ -33,6 +33,15 @@ from utils.config import load_config
 from utils.dataloader import LLMDataset
 import time
 
+from utils.config import load_config
+from model.architecture import MegaLLM
+
+# 加载配置
+config = load_config("config.json")  # 确保路径正确
+
+# 初始化模型
+model = MegaLLM(config.model)
+
 class Trainer:
     """MegaLLM 模型训练器
     
@@ -333,29 +342,14 @@ class Trainer:
             # 确保目录存在
             os.makedirs(os.path.dirname(path), exist_ok=True)
             
-            # 使用更可靠的保存方式
-            checkpoint = {
-                'model_state_dict': {k: v.cpu() for k, v in self.model.state_dict().items()},
-                'optimizer_state_dict': {k: v.cpu() for k, v in self.optim.state_dict().items()},
+            # 简化保存逻辑，直接保存模型状态
+            torch.save({
+                'model_state_dict': self.model.state_dict(),
+                'optimizer_state_dict': self.optim.state_dict(),
                 'config': self.config
-            }
+            }, path)
             
-            # 使用临时文件保存
-            temp_path = path + '.tmp'
-            # 使用更安全的保存方式
-            torch.save(checkpoint, temp_path, 
-                     _use_new_zipfile_serialization=True,
-                     pickle_protocol=4)  # 使用更兼容的pickle协议
-            
-            # 确保文件完全写入磁盘
-            if os.path.exists(temp_path):
-                with open(temp_path, 'rb') as f:
-                    pass  # 确保文件已关闭
-                
-            # 重命名确保原子性
-            if os.path.exists(path):
-                os.remove(path)
-            os.rename(temp_path, path)
+            print(f"模型已成功保存到 {path}")
             
         except Exception as e:
             print(f"保存模型时出错: {str(e)}")
@@ -364,22 +358,27 @@ class Trainer:
     def train(self):
         """执行完整训练流程"""
         try:
+            # 确保epoch数量是整数
+            total_epochs = int(getattr(self.config.training, 'epochs', 100))
+            print(f"\n总训练轮次: {total_epochs}")
+            
             # 开始训练
-            for epoch in range(self.config.training.epochs):
-                self.current_epoch = epoch + 1  # 添加当前epoch记录
-                print(f"\n开始 Epoch {self.current_epoch}/{self.config.training.epochs}")
+            for epoch in range(total_epochs):
+                self.current_epoch = epoch + 1
+                print(f"\n开始 Epoch {self.current_epoch}/{total_epochs}")
                 loss = self.train_epoch(self.current_epoch)
                 print(f"Epoch {self.current_epoch} 完成，平均损失: {loss:.4f}")
                 
                 # 每隔指定epoch保存模型
-                if (self.current_epoch) % self.config.training.save_interval == 0 or epoch == self.config.training.epochs - 1:
+                save_interval = int(getattr(self.config.training, 'save_interval', 10))
+                if (self.current_epoch) % save_interval == 0 or epoch == total_epochs - 1:
                     save_path = f"{self.config.training.save_dir}/model_epoch_{self.current_epoch}.pth"
                     self.save_model(save_path)
                     
         except KeyboardInterrupt:
             print("\n训练被手动中断")
-            print("保存最后一个检查点...")
-            self.save_model(f"{self.config.training.save_dir}/model_interrupted.pth")
+            save_path = f"{self.config.training.save_dir}/model_interrupted.pth"
+            self.save_model(save_path)
             
         except Exception as e:
             print(f"训练过程中出错: {e}")

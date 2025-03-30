@@ -14,7 +14,7 @@
   "training": {
     "batch_size": 32,
     "lr": 1e-4,
-    "epochs": 100,
+    "epochs": 10,
     "data_path": "data/train.json",
     "save_dir": "checkpoints",
     "save_interval": 5,

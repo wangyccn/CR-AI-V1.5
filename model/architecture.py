@@ -183,57 +183,115 @@ class TransformerBlock(nn.Module):
 class MegaLLM(nn.Module):
     def __init__(self, config):
         super().__init__()
-        self.config = config
-        self.embed = ParallelEmbedding(config.vocab_size, config.dim)
-        self.modal_encoder = MultiModalEncoder(config.dim, config.dim)
+        # 确保config是Config对象或字典
+        if isinstance(config, str):  # 新增处理字符串路径的情况
+            from ..utils.config import load_config
+            config = load_config(config)
+            
+        # 处理直接传入的Config类实例的情况
+        if not hasattr(config, 'model') and not isinstance(config, dict):
+            # 如果config本身就是配置对象而不是包含model属性的对象
+            self.config = {
+                'vocab_size': getattr(config, 'vocab_size', 50257),
+                'dim': getattr(config, 'dim', 768),
+                'num_heads': getattr(config, 'num_heads', 12),
+                'num_experts': getattr(config, 'num_experts', 4),
+                'num_layers': getattr(config, 'num_layers', 12),
+                'use_longformer': getattr(config, 'use_longformer', False),
+                'pad_token_id': getattr(config, 'pad_token_id', 0),
+                'max_seq_len': getattr(config, 'max_seq_len', 2048),
+                'multimodal': getattr(config, 'multimodal', True),
+                'eos_token_id': getattr(config, 'eos_token_id', 50256)
+            }
+        elif hasattr(config, 'model'):
+            # 如果是Config对象，提取model配置
+            model_config = config.model
+            self.config = {
+                'vocab_size': model_config.vocab_size,
+                'dim': model_config.dim,
+                'num_heads': model_config.num_heads,
+                'num_experts': model_config.num_experts,
+                'num_layers': model_config.num_layers,
+                'use_longformer': model_config.use_longformer,
+                'pad_token_id': model_config.pad_token_id,
+                'max_seq_len': model_config.max_seq_len,
+                'multimodal': model_config.multimodal,
+                'eos_token_id': model_config.pad_token_id  # 使用pad_token_id作为eos_token_id
+            }
+        elif isinstance(config, dict):
+            # 如果是字典，直接使用
+            self.config = {
+                'vocab_size': config.get('vocab_size', 50257),
+                'dim': config.get('dim', 768),
+                'num_heads': config.get('num_heads', 12),
+                'num_experts': config.get('num_experts', 4),
+                'num_layers': config.get('num_layers', 12),
+                'use_longformer': config.get('use_longformer', False),
+                'pad_token_id': config.get('pad_token_id', 0),
+                'max_seq_len': config.get('max_seq_len', 2048),
+                'multimodal': config.get('multimodal', True),
+                'eos_token_id': config.get('eos_token_id', 50256)
+            }
+        else:
+            raise ValueError("config参数必须是Config对象或字典或配置文件路径")
+
+        # 修改这里：使用字典访问方式
+        self.embed = ParallelEmbedding(self.config['vocab_size'], self.config['dim'])
+        self.modal_encoder = MultiModalEncoder(self.config['dim'], self.config['dim'])
         
         # 使用更高效的Flash Attention
         self.use_flash_attention = hasattr(torch.nn.functional, 'scaled_dot_product_attention')
         
         # 添加LoRA适配器
         self.lora_adapters = nn.ModuleDict({
-            'query': nn.Linear(config.dim, config.dim, bias=False),
-            'key': nn.Linear(config.dim, config.dim, bias=False),
-            'value': nn.Linear(config.dim, config.dim, bias=False)
+            'query': nn.Linear(self.config['dim'], self.config['dim'], bias=False),
+            'key': nn.Linear(self.config['dim'], self.config['dim'], bias=False),
+            'value': nn.Linear(self.config['dim'], self.config['dim'], bias=False)
         })
         
         # 添加专家选择门控
-        self.expert_gate = nn.Linear(config.dim, config.num_experts)
+        self.expert_gate = nn.Linear(self.config['dim'], self.config['num_experts'])
         
         # 添加模态类型嵌入
-        self.modal_type_embeddings = nn.Embedding(2, config.dim)  # 0: text, 1: image
+        self.modal_type_embeddings = nn.Embedding(2, self.config['dim'])  # 0: text, 1: image
         
         self.layers = nn.ModuleList([
             TransformerBlock(
-                config.dim, 
-                config.num_heads, 
-                config.num_experts, 
-                config.use_longformer,
+                self.config['dim'], 
+                self.config['num_heads'], 
+                self.config['num_experts'], 
+                self.config['use_longformer'],
                 use_rotary=True
-            ) for _ in range(config.num_layers)
+            ) for _ in range(self.config['num_layers'])
         ])
         
-        self.head = nn.Linear(config.dim, config.vocab_size)
+        self.head = nn.Linear(self.config['dim'], self.config['vocab_size'])
         self.dtype = torch.float16 if torch.cuda.is_available() else torch.float32
         
         # 添加LayerNorm
-        self.final_norm = RMSNorm(config.dim)
+        self.final_norm = RMSNorm(self.config['dim'])
 
     def forward(self, text_ids, images=None, attention_mask=None):
         # 如果没有提供attention_mask，根据pad_token_id创建
         if attention_mask is None:
-            attention_mask = (text_ids != self.config.pad_token_id).long()
-        batch_size = text_ids.shape[0]
+            attention_mask = (text_ids != self.config['pad_token_id']).long()
         
         # 文本嵌入
         x = self.embed(text_ids).type(self.dtype)
         
+        # 获取batch_size
+        batch_size = text_ids.size(0)
+        
         # 处理图像（如果有）
-        if images is not None:
+        image_features = None
+        if images is not None and self.config['multimodal']:
             image_features = self.modal_encoder(images)
             
             # 添加维度检查和调整
             if image_features.size(-1) != x.size(-1):
+                # 确保有vision_proj属性
+                if not hasattr(self, 'vision_proj'):
+                    self.vision_proj = nn.Linear(image_features.size(-1), x.size(-1)).to(x.device)
                 image_features = self.vision_proj(image_features)
             
             # 添加模态类型嵌入
@@ -250,60 +308,7 @@ class MegaLLM(nn.Module):
         
         # 通过transformer层
         for layer in self.layers:
-            # 传递注意力掩码
-            if hasattr(layer, 'attn') and hasattr(layer.attn, 'forward') and 'attention_mask' in layer.attn.forward.__code__.co_varnames:
-                # 修改transformer层处理
-                for layer in self.layers:
-                    # 添加LoRA适配
-                    if hasattr(self, 'lora_adapters'):
-                        q = x + self.lora_adapters['query'](x)
-                        k = x + self.lora_adapters['key'](x)
-                        v = x + self.lora_adapters['value'](x)
-                        
-                        if self.use_flash_attention:
-                            x = F.scaled_dot_product_attention(q, k, v, attn_mask=attention_mask)
-                        else:
-                            x = layer(x, image_features if images is not None else None)
-                        
-                def forward(self, x, images=None, attention_mask=None):
-                    """前向传播
-                    
-                    参数:
-                        x: 输入token序列 [batch_size, seq_len]
-                        images: 可选图像输入 [batch_size, channels, height, width]
-                        attention_mask: 注意力掩码
-                        
-                    返回:
-                        模型输出
-                    """
-                    # 确保输入序列长度能被注意力头数整除
-                    seq_len = x.size(1)
-                    num_heads = self.config.model.num_heads
-                    if seq_len % num_heads != 0:
-                        padding_size = num_heads - (seq_len % num_heads)
-                        x = F.pad(x, (0, padding_size), "constant", 0)
-                        
-                    # 处理多模态输入
-                    image_features = None
-                    if images is not None and self.config.model.multimodal:
-                        image_features = self.image_encoder(images)
-                        
-                    # 通过各层处理
-                    for layer in self.layers:
-                        # 传递注意力掩码
-                        if hasattr(layer, 'attn') and hasattr(layer.attn, 'forward') and 'attention_mask' in layer.attn.forward.__code__.co_varnames:
-                            x = layer(x, image_features if images is not None else None, attention_mask=attention_mask)
-                        else:
-                            x = layer(x, image_features if images is not None else None)
-                    
-                    # 移除可能的填充
-                    if seq_len != x.size(1):
-                        x = x[:, :seq_len, :]
-                        
-                    x = self.final_norm(x)
-                    return self.head(x.type(torch.float32))
-            else:
-                x = layer(x, image_features if images is not None else None)
+            x = layer(x, image_features)
         
         x = self.final_norm(x)
         return self.head(x.type(torch.float32))
@@ -315,7 +320,7 @@ class MegaLLM(nn.Module):
             generated = input_ids
             
             for _ in range(max_length):
-                outputs = self(generated[:, -self.config.max_seq_len:], images)
+                outputs = self(generated[:, -self.config['max_seq_len']:], images)
                 next_token_logits = outputs[:, -1, :] / temperature
                 
                 # top-p采样
@@ -332,7 +337,7 @@ class MegaLLM(nn.Module):
                 next_token = torch.multinomial(probs, num_samples=1)
                 generated = torch.cat([generated, next_token], dim=1)
                 
-                if (next_token == self.config.eos_token_id).any():
+                if (next_token == self.config['eos_token_id']).any():
                     break
                     
             return generated
