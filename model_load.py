@@ -96,7 +96,6 @@ class ModelLoader:
         except Exception as e:
             logger.error(f"加载配置失败: {str(e)}")
             raise RuntimeError(f"加载配置失败：{str(e)}")
-
     def _load_model(self, model_path: str) -> torch.nn.Module:
         """加载并优化模型
         
@@ -113,16 +112,23 @@ class ModelLoader:
             model_config = self.config.get('model')
             if not model_config:
                 raise ValueError("配置中缺少model配置")
-    
-            # 移除重复的导入语句
+            if callable(model_config):
+                raise ValueError("model配置应该是字典而不是函数")
+            required_keys = ['dim', 'num_heads', 'num_layers']
+            for key in required_keys:
+                if key not in model_config:
+                    raise ValueError(f"model配置缺少必要参数: {key}")
             # 确保使用类名实例化
-            model = MegaLLM(model_config)  # 直接使用已导入的类
-    
+            model = MegaLLM(**model_config)
+
+            if not isinstance(model, torch.nn.Module):
+                raise TypeError(f"模型实例化失败，得到的是{type(model)}而不是torch.nn.Module")
+
             # 添加更详细的加载错误信息
             try:
                 if not os.path.exists(model_path):
                     raise FileNotFoundError(f"模型文件不存在: {model_path}")
-    
+
                 # 修改1: 添加安全全局变量
                 from utils.config import Config
                 with torch.serialization.safe_globals([Config]):
@@ -132,7 +138,7 @@ class ModelLoader:
                 logger.warning(f"安全加载失败，尝试非安全加载: {str(e)}")
                 # 直接使用非安全加载
                 checkpoint = torch.load(model_path, map_location=self.device, weights_only=False)
-    
+
             # 添加状态字典检查
             if isinstance(checkpoint, dict):
                 if 'model_state_dict' in checkpoint:
@@ -203,7 +209,7 @@ class ModelLoader:
 
     def _warmup_model(self, model: torch.nn.Module) -> None:
         """预热模型以优化初次推理性能
-        
+
         Args:
             model: 要预热的模型
         """
@@ -226,13 +232,13 @@ class ModelLoader:
 
     def process_image(self, image: Union[str, Image.Image, torch.Tensor]) -> torch.Tensor:
         """处理输入图像为模型可接受的张量
-        
+
         Args:
             image: 输入图像，可以是路径、PIL图像或张量
-            
+
         Returns:
             torch.Tensor: 处理后的图像张量
-            
+
         Raises:
             RuntimeError: 如果处理失败
         """
@@ -271,7 +277,7 @@ class ModelLoader:
                max_length: Optional[int] = None, num_beams: int = 1):
         """
         执行推理
-        
+
         Args:
             tokenizer: 分词器实例
             text: 输入文本
@@ -284,7 +290,7 @@ class ModelLoader:
         """
         if not text.strip():
             raise ValueError("输入文本不能为空")
-            
+
         try:
             start_time = time.time()
             history = history or []
@@ -332,7 +338,7 @@ class ModelLoader:
                       top_p: float = 0.95,
                       max_length: Optional[int] = None) -> List[str]:
         """批量推理
-        
+
         Args:
             tokenizer: 分词器实例
             queries: 输入文本列表
@@ -341,10 +347,10 @@ class ModelLoader:
             temperature: 温度参数
             top_p: top-p采样参数
             max_length: 最大生成长度
-            
+
         Returns:
             List[str]: 生成的响应列表
-            
+
         Raises:
             RuntimeError: 如果生成失败
         """
@@ -419,10 +425,10 @@ class ModelLoader:
                        max_length: Optional[int] = None,
                        num_beams: int = 1):
         """流式生成响应
-        
+
         Args:
             参数与predict方法相同
-            
+
         Yields:
             str: 生成的token
         """
