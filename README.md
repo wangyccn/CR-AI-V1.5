@@ -70,7 +70,7 @@ CR-AI-V1.5 is licensed under the [MIT](LICENSE) license.
 For any questions or suggestions, please contact us through:
 
 - GitHub Issues
-- Email: contact@cr-ai.org
+- Email: 2721517445@qq.com
 
 ---
 
