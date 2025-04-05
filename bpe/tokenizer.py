@@ -12,214 +12,177 @@ logger = logging.getLogger(__name__)
 
 class BpeTokenizer:
     def __init__(self, path: Optional[str] = None):
-        """
-        初始化BPE分词器，配置正常化、预处理、解码、后处理等步骤
-        :param path: 如果提供路径，将加载已经存在的分词器文件
-        """
+        """初始化BPE分词器"""
         self._special_tokens = ["<s>", "</s>", "<|user|>", "<|system|>", "<pad>", "<unk>"]
-        self._tokenizer = Tokenizer(BPE(unk_token="<unk>"))
-        
-        # 添加特殊token的ID映射
-        self.pad_token = "<pad>"
-        self.unk_token = "<unk>"
-        self.bos_token = "<s>"
-        self.eos_token = "</s>"
-        
-        # 初始化时立即添加特殊标记以确保ID存在
-        self._tokenizer.add_special_tokens(self._special_tokens)
-        
-        # 设置特殊token的ID
-        self.pad_token_id = self._tokenizer.token_to_id("<pad>")
-        self.unk_token_id = self._tokenizer.token_to_id("<unk>")
-        self.bos_token_id = self._tokenizer.token_to_id("<s>")
-        self.eos_token_id = self._tokenizer.token_to_id("</s>")
-
-        # 配置分词器的正常化、预处理、解码和后处理器
-        self._configure_tokenizer()
-
-        # 如果提供路径，加载已训练好的分词器
-        if path:
-            self.load(path)
-
-    def _configure_tokenizer(self) -> None:
-        """
-        配置分词器的正常化、预处理、解码和后处理器
-        """
         try:
-            # 正规化器配置 - 使用正确的NFC实例化方法
-            self._tokenizer.normalizer = normalizers.Sequence([
-                normalizers.NFC(),
-                normalizers.Replace(" ", "▁")  # 修改为正确的参数传递方式
-            ])
+            self._tokenizer = Tokenizer(BPE(unk_token="<unk>"))
+            self._tokenizer.add_special_tokens(self._special_tokens)
             
-            # 预分词器配置
-            self._tokenizer.pre_tokenizer = pre_tokenizers.Sequence([
-                pre_tokenizers.Split(
-                    pattern=r"(\d+|[a-zA-Z]+|(?:'s|'t|'re|'ve|'m|'ll|'d))",
-                    behavior="isolated"
-                ),
-                pre_tokenizers.ByteLevel(add_prefix_space=False)
-            ])
+            # 确保这些属性在初始化时设置
+            self.eos_token = "</s>"
+            self.eos_token_id = None  # 会在_init_special_tokens中设置
             
-            # 解码器配置
-            self._tokenizer.decoder = decoders.Sequence([
-                decoders.ByteLevel(),
-                decoders.Replace("▁", " ")  # 修改为正确的参数传递方式
-            ])
-            
-            # 后处理器配置 - 优化特殊标记处理
-            special_tokens_with_ids = []
-            required_tokens = ["<s>", "</s>"]
-            missing_tokens = []
-            
-            # 检查关键特殊标记
-            for token in self._special_tokens:
-                token_id = self._tokenizer.token_to_id(token)
-                if token_id is not None:
-                    special_tokens_with_ids.append((token, token_id))
-                elif token in required_tokens:
-                    missing_tokens.append(token)
-            
-            # 检查是否有必要的特殊标记
-            if not missing_tokens and len(special_tokens_with_ids) >= 2:
-                self._tokenizer.post_processor = processors.TemplateProcessing(
-                    single="<s> $A </s>",
-                    pair="<s> $A </s> $B </s>",  # 添加对文本对的支持
-                    special_tokens=special_tokens_with_ids
-                )
-            else:
-                logger.warning(f"特殊标记缺失: {missing_tokens}，跳过后处理器配置")
-                
-        except Exception as e:
-            logger.error(f"配置tokenizer时出错: {str(e)}")
-            # 记录更详细的错误信息以便调试
-            import traceback
-            logger.debug(f"错误详情: {traceback.format_exc()}")
-            raise
-
-    def _init_trainer(self, vocab_size: int, min_freq: int) -> BpeTrainer:
-        """
-        初始化分词训练器，设置词汇表的最大大小和最小频率
-        :param vocab_size: 词汇表大小
-        :param min_freq: 最小频率
-        :return: BpeTrainer对象
-        """
-        alphabet = pre_tokenizers.ByteLevel.alphabet()
-        min_size = len(self._special_tokens) + len(alphabet)
-        if vocab_size <= min_size:
-            raise ValueError(f"vocab_size必须大于{min_size}")
-
-        return BpeTrainer(
-            vocab_size=vocab_size - len(self._special_tokens),
-            min_frequency=min_freq,
-            special_tokens=self._special_tokens,
-            initial_alphabet=alphabet,
-            show_progress=True
-        )
-
-    def train(self, files: List[str], vocab_size: int, min_freq: int) -> None:
-        """
-        使用文件训练BPE分词器
-        :param files: 训练文本文件列表
-        :param vocab_size: 词汇表大小
-        :param min_freq: 最小词频
-        """
-        try:
-            trainer = self._init_trainer(vocab_size, min_freq)
-            self._tokenizer.train(files=files, trainer=trainer)
-            logger.info("Training completed successfully")
-            # 重新配置以更新后处理器中的特殊标记ID
+            self._init_special_tokens()
             self._configure_tokenizer()
-        except Exception as e:
-            logger.error(f"Training failed: {str(e)}")
-            raise
 
-    def train_from_iterator(self, iterator: Iterable[str], vocab_size: int, min_freq: int) -> None:
-        """
-        使用迭代器训练BPE分词器
-        :param iterator: 训练数据的迭代器
-        :param vocab_size: 词汇表大小
-        :param min_freq: 最小词频
-        """
-        try:
-            trainer = self._init_trainer(vocab_size, min_freq)
-            self._tokenizer.train_from_iterator(iterator=iterator, trainer=trainer)
-            logger.info("Training from iterator completed successfully")
-            self._configure_tokenizer()  # 更新后处理器
-        except Exception as e:
-            logger.error(f"Training from iterator failed: {str(e)}")
-            raise
-
-    def save(self, path: str) -> None:
-        """
-        保存训练好的分词器
-        :param path: 保存路径
-        """
-        try:
-            # 确保目录存在
-            os.makedirs(os.path.dirname(path), exist_ok=True)
-            self._tokenizer.save(path)
-            logger.info(f"Tokenizer saved to {path}")
-        except Exception as e:
-            logger.error(f"Failed to save tokenizer: {str(e)}")
-            raise
-
-    def load(self, path: str) -> 'BpeTokenizer':
-        """
-        加载保存的分词器
-        :param path: 分词器文件路径
-        :return: 加载后的分词器实例
-        """
-        try:
-            if not os.path.exists(path):
-                raise FileNotFoundError(f"Tokenizer file not found at {path}")
+            if path:
+                self.load(path)
                 
+        except Exception as e:
+            logger.error(f"初始化tokenizer失败: {str(e)}")
+            raise RuntimeError("Tokenizer初始化失败") from e
+
+    def _init_special_tokens(self) -> None:
+        """初始化并验证特殊标记"""
+        try:
+            for token in self._special_tokens:
+                if self._tokenizer.token_to_id(token) is None:
+                    # 如果标记不存在，先添加到词汇表
+                    self._tokenizer.add_tokens([token])
+                    logger.warning(f"特殊标记 {token} 不在词汇表中，已自动添加")
+            
+            # 确保这些属性被正确设置
+            self.pad_token = "<pad>"
+            self.unk_token = "<unk>"
+            self.bos_token = "<s>"
+            self.eos_token = "</s>"
+            
+            self.pad_token_id = self._tokenizer.token_to_id(self.pad_token)
+            self.unk_token_id = self._tokenizer.token_to_id(self.unk_token)
+            self.bos_token_id = self._tokenizer.token_to_id(self.bos_token)
+            self.eos_token_id = self._tokenizer.token_to_id(self.eos_token)
+            
+        except Exception as e:
+            logger.error(f"初始化特殊标记失败: {str(e)}")
+            raise RuntimeError("特殊标记初始化失败") from e
+
+    def load(self, path: str) -> None:
+        """从指定路径加载分词器"""
+        try:
             self._tokenizer = Tokenizer.from_file(path)
             # 确保特殊标记存在
             self._tokenizer.add_special_tokens(self._special_tokens)
+            self._init_special_tokens()
             self._configure_tokenizer()
-            
-            # 验证tokenizer是否有效
-            test_text = "Hello world"
-            test_tokens = self._tokenizer.encode(test_text)
-            if not test_tokens:
-                raise ValueError("无法使用加载的tokenizer编码文本")
-                
-            logger.info(f"Tokenizer loaded from {path}")
-            return self
-        except Exception as e:
-            logger.error(f"Failed to load tokenizer: {str(e)}")
-            raise
+            logger.info(f"分词器已从 {path} 加载")
 
-    def encode(self, text: str, out_ids: bool = True) -> Union[List[int], List[str]]:
+        except Exception as e:
+            logger.error(f"加载分词器时出错: {str(e)}")
+            raise RuntimeError("无法加载分词器") from e
+
+    def encode(self, text: Union[str, List[str]], out_ids: bool = True) -> Union[List[int], List[str], List[List[int]], List[List[str]]]:
         """
-        编码文本为token ID列表或token列表
-        :param text: 输入文本
-        :param out_ids: 是否返回token ID，默认为True
-        :return: token ID列表或token列表
+        增强的编码方法，支持单个文本和文本列表
         """
+        if isinstance(text, list):
+            return [self._encode_single(t, out_ids) for t in text]
+        return self._encode_single(text, out_ids)
+    
+    def _encode_single(self, text: str, out_ids: bool = True) -> Union[List[int], List[str]]:
+        """单个文本的编码实现"""
         if not isinstance(text, str):
             text = str(text)
             
         try:
             encoded: Encoding = self._tokenizer.encode(text)
+            if not encoded.ids and not encoded.tokens:
+                logger.warning(f"文本 '{text}' 编码结果为空")
+                return [] if out_ids else []
             return encoded.ids if out_ids else encoded.tokens
         except Exception as e:
             logger.error(f"编码文本时出错: {str(e)}")
-            # 如果编码失败，返回空列表而不是抛出异常
             return [] if out_ids else []
 
-    def decode(self, tokens: List[int]) -> str:
+    def decode(self, tokens: Union[List[int], List[List[int]]]) -> Union[str, List[str]]:
         """
-        解码token ID为原始文本
-        :param tokens: token ID列表
-        :return: 解码后的文本
+        增强的解码方法，支持单个序列和序列列表
         """
+        if isinstance(tokens, list) and tokens and isinstance(tokens[0], list):
+            return [self._decode_single(t) for t in tokens]
+        return self._decode_single(tokens)
+    
+    def _decode_single(self, tokens: List[int]) -> str:
+        """单个序列的解码实现"""
         try:
-            return self._tokenizer.decode(tokens)
+            if not tokens:
+                return ""
+            result = self._tokenizer.decode(tokens)
+            return result if result else ""
         except Exception as e:
             logger.error(f"解码token时出错: {str(e)}")
             return ""
+
+    def _configure_tokenizer(self) -> None:
+        """配置分词器的正常化、预处理、解码和后处理步骤"""
+        try:
+            # 配置正则化器
+            self._tokenizer.normalizer = normalizers.Sequence([
+                normalizers.NFD(),  # Unicode 正规化
+                normalizers.StripAccents(),  # 去除重音符号
+                normalizers.Replace(r'[\s]+', ' '),  # 合并多个空格
+            ])
+
+            # 配置预分词器
+            self._tokenizer.pre_tokenizer = pre_tokenizers.Sequence([
+                pre_tokenizers.WhitespaceSplit(),  # 按空格分词
+                pre_tokenizers.Punctuation(),  # 处理标点符号
+            ])
+
+            # 配置解码器
+            self._tokenizer.decoder = decoders.ByteLevel()
+
+            # 配置后处理器
+            self._tokenizer.post_processor = processors.TemplateProcessing(
+                single=f"{self.bos_token} $A {self.eos_token}",
+                pair=f"{self.bos_token} $A {self.eos_token} $B:1 {self.eos_token}:1",
+                special_tokens=[
+                    (self.bos_token, self.bos_token_id),
+                    (self.eos_token, self.eos_token_id),
+                ],
+            )
+            
+            logger.info("分词器配置完成")
+            
+        except Exception as e:
+            logger.error(f"配置分词器时出错: {str(e)}")
+            raise
+
+    def train_from_iterator(self, iterator: Iterable[str], vocab_size: int, min_freq: int = 2) -> None:
+        """从文本迭代器训练BPE分词器"""
+        try:
+            # 创建BPE训练器
+            trainer = BpeTrainer(
+                vocab_size=vocab_size,
+                min_frequency=min_freq,
+                special_tokens=self._special_tokens,
+                show_progress=True
+            )
+            
+            # 训练分词器
+            self._tokenizer.train_from_iterator(iterator, trainer=trainer)
+            
+            # 重新初始化特殊token映射
+            self._init_special_tokens()
+            
+            logger.info(f"训练完成，词汇量: {vocab_size}")
+            
+        except Exception as e:
+            logger.error(f"训练分词器时出错: {str(e)}")
+            raise RuntimeError("分词器训练失败") from e
+
+    def save(self, path: str) -> None:
+        """保存分词器到指定路径"""
+        try:
+            # 确保目录存在
+            os.makedirs(os.path.dirname(path), exist_ok=True)
+            
+            # 保存分词器
+            self._tokenizer.save(path)
+            logger.info(f"分词器已保存到 {path}")
+            
+        except Exception as e:
+            logger.error(f"保存分词器时出错: {str(e)}")
+            raise RuntimeError(f"无法保存分词器到 {path}") from e
 
     def __len__(self) -> int:
         """

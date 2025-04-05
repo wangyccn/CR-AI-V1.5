@@ -13,10 +13,12 @@
 
 import torch
 from tokenizers import Tokenizer
-from typing import List, Optional, Union, Dict, Any, Tuple
+from typing import List, Optional, Union
 from utils.config import load_config
 from model.architecture import MegaLLM
 from PIL import Image
+from utils.config import load_config
+from model.architecture import MegaLLM
 from torchvision import transforms
 import logging
 import time
@@ -26,6 +28,8 @@ import os
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger("ModelLoader")
 
+
+__all__ = ['ModelLoader']  # 添加这行确保类被正确导出
 
 class ModelLoader:
     def __init__(self, config_path: str, device: str = 'cuda',
@@ -78,14 +82,17 @@ class ModelLoader:
             
         Returns:
             dict: 配置字典
-            
-        Raises:
-            RuntimeError: 如果加载失败
         """
         try:
             logger.info(f"正在加载配置: {config_path}")
             config = load_config(config_path)
-            return config.__dict__ if hasattr(config, '__dict__') else config
+            # 确保返回字典类型
+            if hasattr(config, '__dict__'):
+                return vars(config)  # 使用vars()替代__dict__更规范
+            elif isinstance(config, dict):
+                return config
+            else:
+                raise ValueError("配置必须是字典或具有__dict__属性的对象")
         except Exception as e:
             logger.error(f"加载配置失败: {str(e)}")
             raise RuntimeError(f"加载配置失败：{str(e)}")
@@ -106,19 +113,26 @@ class ModelLoader:
             model_config = self.config.get('model')
             if not model_config:
                 raise ValueError("配置中缺少model配置")
-
-            model = MegaLLM(model_config)
-
+    
+            # 移除重复的导入语句
+            # 确保使用类名实例化
+            model = MegaLLM(model_config)  # 直接使用已导入的类
+    
             # 添加更详细的加载错误信息
             try:
                 if not os.path.exists(model_path):
                     raise FileNotFoundError(f"模型文件不存在: {model_path}")
-
-                checkpoint = torch.load(model_path, map_location=self.device)
+    
+                # 修改1: 添加安全全局变量
+                from utils.config import Config
+                with torch.serialization.safe_globals([Config]):
+                    checkpoint = torch.load(model_path, map_location=self.device, weights_only=True)
             except Exception as e:
-                logger.error(f"无法加载模型文件 {model_path}: {str(e)}")
-                raise RuntimeError(f"无法加载模型文件 {model_path}: {str(e)}")
-
+                # 修改2: 如果安全加载失败，尝试非安全加载（仅当信任模型来源时）
+                logger.warning(f"安全加载失败，尝试非安全加载: {str(e)}")
+                # 直接使用非安全加载
+                checkpoint = torch.load(model_path, map_location=self.device, weights_only=False)
+    
             # 添加状态字典检查
             if isinstance(checkpoint, dict):
                 if 'model_state_dict' in checkpoint:
@@ -154,10 +168,14 @@ class ModelLoader:
             # 添加8-bit量化支持
             if self.quantize_8bit and self.device == 'cuda':
                 try:
-                    from bitsandbytes import quantize_8bit
+                    import bitsandbytes as bnb
                     logger.info("正在进行8-bit量化...")
-                    model = quantize_8bit(model)
+                    model = bnb.optim.GlobalOptimManager.get_instance().register_module_override(
+                        model, 'weight', {'optim_bits': 8}
+                    )
                     logger.info("8-bit量化完成")
+                except ImportError:
+                    logger.warning("bitsandbytes未安装，跳过8-bit量化")
                 except Exception as e:
                     logger.warning(f"8-bit量化失败: {str(e)}")
 
@@ -173,7 +191,7 @@ class ModelLoader:
                 except Exception as e:
                     logger.warning(f"模型编译失败: {str(e)}")
 
-            model.eval()
+            model = model.eval()  # 确保使用返回值
 
             # 预热模型
             self._warmup_model(model)
@@ -234,6 +252,9 @@ class ModelLoader:
             if isinstance(image, Image.Image):
                 image = self.image_processor(image)
 
+            # 确保图像是张量类型并添加batch维度
+            if not isinstance(image, torch.Tensor):
+                image = torch.tensor(image)
             processed_image = image.unsqueeze(0).to(self.device)
 
             # 缓存结果
@@ -245,9 +266,21 @@ class ModelLoader:
             logger.error(f"图像处理失败: {str(e)}")
             raise RuntimeError(f"图像处理失败：{str(e)}")
 
-    def predict(self, tokenizer: Tokenizer, text: str, image_path: Optional[str] = None):
+    def predict(self, tokenizer: Tokenizer, text: str, image: Optional[Union[str, Image.Image, torch.Tensor]] = None,
+               history: Optional[List[str]] = None, temperature: float = 1.0, top_p: float = 0.95,
+               max_length: Optional[int] = None, num_beams: int = 1):
         """
         执行推理
+        
+        Args:
+            tokenizer: 分词器实例
+            text: 输入文本
+            image: 可选输入图像
+            history: 对话历史
+            temperature: 温度参数
+            top_p: top-p采样参数
+            max_length: 最大生成长度
+            num_beams: beam数
         """
         if not text.strip():
             raise ValueError("输入文本不能为空")
@@ -257,7 +290,7 @@ class ModelLoader:
             history = history or []
 
             # 处理输入
-            input_text = " ".join(history + [query])
+            input_text = " ".join(history + [text])
             input_ids = torch.tensor(tokenizer.encode(input_text).ids).unsqueeze(0).to(self.device)
 
             # 处理图像（如果有）
@@ -267,8 +300,6 @@ class ModelLoader:
             if max_length is None:
                 max_length = self.config.get('max_length', 100)
 
-            # 使用torch.inference_mode()代替no_grad，可能提供更好的性能
-            # 使用更先进的生成策略
             with torch.inference_mode(), torch.cuda.amp.autocast(enabled=self.device == 'cuda'):
                 output_ids = self.model.generate(
                     input_ids=input_ids,
@@ -279,17 +310,13 @@ class ModelLoader:
                     num_beams=num_beams,
                     early_stopping=True if num_beams > 1 else False,
                     do_sample=True,
-                    repetition_penalty=1.1,  # 避免重复
-                    length_penalty=1.0,  # 控制生成长度
-                    no_repeat_ngram_size=2  # 避免2-gram重复
+                    repetition_penalty=1.1,
+                    length_penalty=1.0,
+                    no_repeat_ngram_size=2
                 )
 
-                # 使用更智能的响应处理
                 response = tokenizer.decode(output_ids[0].tolist(), skip_special_tokens=True)
                 result = response[len(input_text):].strip()
-
-                response = tokenizer.decode(output_ids[0].tolist())
-                result = response.split(query)[-1].strip()
 
                 logger.info(f"生成完成，耗时: {time.time() - start_time:.2f}秒")
                 return result
@@ -386,7 +413,7 @@ class ModelLoader:
 
     def stream_predict(self, tokenizer: Tokenizer, query: str,
                        image: Optional[Union[str, Image.Image, torch.Tensor]] = None,
-                       history: List[str] = None,
+                       history: Optional[List[str]] = None,
                        temperature: float = 1.0,
                        top_p: float = 0.95,
                        max_length: Optional[int] = None,

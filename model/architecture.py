@@ -8,6 +8,8 @@
 
 import torch
 import torch.nn as nn
+
+from bpe import tokenizer
 from .longformer_attention import LongformerAttention
 from .moe import MoE
 from .sparse_attention import SparseAttention
@@ -236,88 +238,136 @@ class MegaLLM(nn.Module):
                 
         return x
 
-    def generate(self, input_ids, images=None, max_length=100, temperature=1.0, top_p=0.95):
+    def eval(self) -> 'MegaLLM':
+        """将模型设置为评估模式
+        
+        返回:
+            MegaLLM: 返回模型自身以支持链式调用
+        """
+        super().eval()
+        
+        # 禁用梯度计算
+        for param in self.parameters():
+            param.requires_grad = False
+            
+        # 禁用dropout和batch norm的train模式
+        for module in self.modules():
+            if isinstance(module, (nn.Dropout, nn.BatchNorm1d, nn.BatchNorm2d)):
+                module.eval()
+                
+        # 禁用梯度检查点
+        self.use_gradient_checkpointing = False
+        
+        # 确保flash attention在eval模式下可用
+        if hasattr(self, 'use_flash_attention'):
+            self.use_flash_attention = True
+            
+        return self
+
+    def generate(self, input_ids, images=None, max_length=100, temperature=1.0, 
+                top_p=0.95, do_sample=True, eos_token_id=None):  # 添加do_sample参数
+        """生成文本
+        
+        参数:
+            input_ids (Tensor): 输入token IDs
+            images (Tensor): 可选图像输入
+            max_length (int): 最大生成长度
+            temperature (float): 温度参数
+            top_p (float): top-p采样参数
+            do_sample (bool): 是否采样(默认为True)
+            eos_token_id (int): 结束标记的token ID
+        """
         self.eval()
         with torch.no_grad():
-            batch_size = input_ids.shape[0]
-            generated = input_ids
+            # 初始化输出序列
+            output = input_ids
             
-            for _ in range(max_length):
-                outputs = self(generated[:, -getattr(self.config, 'max_seq_len', 128):], images)
-                next_token_logits = outputs[:, -1, :] / temperature
+            # 处理图像特征
+            image_features = None
+            if images is not None:
+                image_encoder = MultiModalEncoder(image_dim=self.embed.embedding_dim)
+                image_features = image_encoder(images)
+                image_features = image_features.unsqueeze(1)
+            
+            # 生成循环
+            for _ in range(max_length - input_ids.size(1)):
+                # 获取模型输出
+                logits = self.forward(output, image_features)[:, -1, :]
                 
-                # top-p采样
-                sorted_logits, sorted_indices = torch.sort(next_token_logits, descending=True)
-                cumulative_probs = torch.cumsum(F.softmax(sorted_logits, dim=-1), dim=-1)
-                sorted_indices_to_remove = cumulative_probs > top_p
-                sorted_indices_to_remove[..., 1:] = sorted_indices_to_remove[..., :-1].clone()
-                sorted_indices_to_remove[..., 0] = 0
+                # 应用温度
+                logits = logits / temperature
                 
-                for idx in range(batch_size):
-                    next_token_logits[idx, sorted_indices[idx][sorted_indices_to_remove[idx]]] = float('-inf')
+                # 应用top-p采样
+                if do_sample and top_p < 1.0:
+                    sorted_logits, sorted_indices = torch.sort(logits, descending=True)
+                    cumulative_probs = torch.cumsum(F.softmax(sorted_logits, dim=-1), dim=-1)
+                    sorted_indices_to_remove = cumulative_probs > top_p
+                    sorted_indices_to_remove[..., 1:] = sorted_indices_to_remove[..., :-1].clone()
+                    sorted_indices_to_remove[..., 0] = 0
+                    indices_to_remove = sorted_indices_to_remove.scatter(1, sorted_indices, sorted_indices_to_remove)
+                    logits[indices_to_remove] = -float('Inf')
                 
-                probs = F.softmax(next_token_logits, dim=-1)
-                next_token = torch.multinomial(probs, num_samples=1)
-                generated = torch.cat([generated, next_token], dim=1)
+                # 采样或贪婪解码
+                if do_sample:
+                    probs = F.softmax(logits, dim=-1)
+                    next_token = torch.multinomial(probs, num_samples=1)
+                else:
+                    next_token = torch.argmax(logits, dim=-1, keepdim=True)
                 
-                if (next_token == getattr(self.config, 'eos_token_id', 0)).any():
+                # 添加到输出序列
+                output = torch.cat([output, next_token], dim=-1)
+                
+                # 检查是否应该停止
+                if eos_token_id is not None and next_token.item() == eos_token_id:
                     break
-                    
-            return generated
-    
-    def stream_generate(self, input_ids, images=None, **kwargs):
-        """流式生成方法
-        
-        Args:
-            input_ids: 输入token ids
-            images: 可选图像输入
-            **kwargs: 生成参数
             
-        Yields:
-            torch.Tensor: 生成的token ids
+            return output
+
+    def stream_generate(self, input_ids, images=None, max_length=100, temperature=1.0, 
+                       top_p=0.95, num_beams=1, early_stopping=False, do_sample=True):
+        """流式生成文本
+        
+        参数与generate方法相同
+        
+        返回:
+            Generator: 生成token的生成器
         """
-        # 初始化生成状态
-        generated = input_ids
-        past_key_values = None
-        
-        for _ in range(kwargs.get('max_length', 100)):
-            with torch.no_grad():
-                outputs = self(
-                    input_ids=generated[:, -1:] if past_key_values is not None else input_ids,
-                    images=images,
-                    past_key_values=past_key_values,
-                    use_cache=True
-                )
-                
-            next_token_logits = outputs.logits[:, -1, :]
-            past_key_values = outputs.past_key_values
+        self.eval()
+        with torch.no_grad():
+            output = input_ids
+            image_features = None
+            if images is not None:
+                image_encoder = MultiModalEncoder(image_dim=self.embed.embedding_dim)
+                image_features = image_encoder(images)
+                image_features = image_features.unsqueeze(1)
             
-            # 应用温度采样
-            next_token_logits = next_token_logits / kwargs.get('temperature', 1.0)
-            
-            # 应用top-p采样
-            if kwargs.get('top_p', 1.0) < 1.0:
-                sorted_logits, sorted_indices = torch.sort(next_token_logits, descending=True)
-                cumulative_probs = torch.cumsum(F.softmax(sorted_logits, dim=-1), dim=-1)
+            for _ in range(max_length - input_ids.size(1)):
+                logits = self.forward(output, image_features)[:, -1, :]
+                logits = logits / temperature
                 
-                # 移除低概率token
-                sorted_indices_to_remove = cumulative_probs > kwargs['top_p']
-                sorted_indices_to_remove[..., 1:] = sorted_indices_to_remove[..., :-1].clone()
-                sorted_indices_to_remove[..., 0] = 0
+                if do_sample and top_p < 1.0:
+                    sorted_logits, sorted_indices = torch.sort(logits, descending=True)
+                    cumulative_probs = torch.cumsum(F.softmax(sorted_logits, dim=-1), dim=-1)
+                    sorted_indices_to_remove = cumulative_probs > top_p
+                    sorted_indices_to_remove[..., 1:] = sorted_indices_to_remove[..., :-1].clone()
+                    sorted_indices_to_remove[..., 0] = 0
+                    indices_to_remove = sorted_indices_to_remove.scatter(1, sorted_indices, sorted_indices_to_remove)
+                    logits[indices_to_remove] = -float('Inf')
                 
-                indices_to_remove = sorted_indices[sorted_indices_to_remove]
-                next_token_logits[:, indices_to_remove] = -float('Inf')
+                if do_sample:
+                    probs = F.softmax(logits, dim=-1)
+                    next_token = torch.multinomial(probs, num_samples=1)
+                else:
+                    next_token = torch.argmax(logits, dim=-1, keepdim=True)
                 
-            # 采样下一个token
-            probs = F.softmax(next_token_logits, dim=-1)
-            next_token = torch.multinomial(probs, num_samples=1)
-            
-            generated = torch.cat((generated, next_token), dim=-1)
-            yield generated
-            
-            # 检查停止条件
-            if next_token.item() == self.config.eos_token_id:
-                break
+                output = torch.cat([output, next_token], dim=-1)
+                yield output
+                
+                if not hasattr(tokenizer, 'eos_token_id'):
+                    raise AttributeError("tokenizer缺少eos_token_id属性")
+                
+                if next_token.item() == tokenizer.eos_token_id:
+                    break
 
 
 def test_model():

@@ -17,7 +17,7 @@
 import json
 import torch
 import torch.nn.functional as F
-from torch.cuda.amp import autocast, GradScaler
+from torch.cuda.amp import GradScaler
 from torch.optim import AdamW
 from torch.utils.data import DataLoader
 from tqdm import tqdm
@@ -31,7 +31,6 @@ from bpe.tokenizer import BpeTokenizer
 from model.architecture import MegaLLM
 from utils.config import load_config
 from utils.dataloader import LLMDataset
-import time
 
 from utils.config import load_config
 from model.architecture import MegaLLM
@@ -83,7 +82,7 @@ class Trainer:
         )
         
         # 设置梯度累积步数
-        self.accumulation_steps = self.config.training.accumulation_steps if hasattr(self.config.training, 'accumulation_steps') else 1
+        self.accumulation_steps = getattr(self.config.training, 'accumulation_steps', 1)
         
         # Enable cudnn auto-tuner for convolution speedup if possible
         if self.device.type == 'cuda':
@@ -137,10 +136,16 @@ class Trainer:
         
             for item in data:
                 # 确保输入和目标序列的长度不超过模型的最大长度
-                max_length = self.config.model.max_length if hasattr(self.config.model, 'max_length') else 2048
+                max_length = self.config.model.max_length
                 
                 input_tokens = self.tokenizer.encode(item['prompt'])[:max_length]
                 target_tokens = self.tokenizer.encode(item['completion'])[:max_length]
+                
+                # 确保tokenizer.decode接收的是List[int]
+                if isinstance(input_tokens[0], str):  # 处理可能的字符串token情况
+                    input_tokens = [int(t) for t in input_tokens]
+                if isinstance(target_tokens[0], str):
+                    target_tokens = [int(t) for t in target_tokens]
                 
                 sample = {
                     'input_ids': torch.tensor(input_tokens, dtype=torch.long),
@@ -358,8 +363,11 @@ class Trainer:
     def train(self):
         """执行完整训练流程"""
         try:
-            # 确保epoch数量是整数
+            # 使用getattr提供默认值
             total_epochs = int(getattr(self.config.training, 'epochs', 100))
+            save_interval = int(getattr(self.config.training, 'save_interval', 10))
+            save_dir = getattr(self.config.training, 'save_dir', 'checkpoints')
+            
             print(f"\n总训练轮次: {total_epochs}")
             
             # 开始训练
@@ -376,7 +384,7 @@ class Trainer:
                     self.save_model(save_path)
                     
             # 训练结束时保存最终模型到运行目录
-            final_path = "longformer_pretrained.pth"
+            final_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), self.config.model.model_path)
             self.save_model(final_path)
             print(f"最终模型已保存到运行目录: {os.path.abspath(final_path)}")
                     

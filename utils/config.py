@@ -22,30 +22,19 @@ from dataclasses import dataclass
 
 @dataclass
 class ModelConfig:
-    """模型结构配置类
-    
-    属性:
-        vocab_size (int): 词汇表大小
-        dim (int): 模型隐藏层维度
-        num_layers (int): Transformer层数
-        num_heads (int): 注意力头数
-        num_experts (int): MoE专家数量
-        use_longformer (bool): 是否使用Longformer注意力
-        multimodal (bool): 是否支持多模态输入
-        image_dim (int): 图像特征维度
-        max_seq_len (int): 最大输入序列长度
-        pad_token_id (int): 填充token的ID
-    """
+    """模型结构配置类"""
     vocab_size: int
     dim: int
     num_layers: int
     num_heads: int
     num_experts: int
     use_longformer: bool = False
-    multimodal: bool = False  # 新增多模态支持
-    image_dim: int = 512  # 图像特征维度
+    multimodal: bool = False
+    image_dim: int = 512
     max_seq_len: int = 8192  # 最大序列长度
-    pad_token_id: int = 0  # 新增填充token ID
+    max_length: int = 2048   # 新增max_length属性
+    pad_token_id: int = 0
+    model_path: str = "longformer_pretrained.pth"  # 模型路径
 
 @dataclass 
 class TrainingConfig:
@@ -79,6 +68,7 @@ class TrainingConfig:
     grad_accum_steps: int = 4  # 梯度累积步数
     fp16: bool = True  # 混合精度训练
     bf16: bool = False
+    model_path: str = "longformer_pretrained.pth"  # 模型路径
 
 
 @dataclass

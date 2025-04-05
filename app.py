@@ -17,7 +17,7 @@ from flask import Flask, request, jsonify
 import base64
 from PIL import Image
 import io
-from model import ModelLoader
+from model_load import ModelLoader
 from tokenizers import Tokenizer
 import torch
 from flask import Response
@@ -57,8 +57,8 @@ for token_name, token in special_tokens.items():
     setattr(tokenizer, f"{token_name}_id", token_id)
 
 # 加载模型
-model_loader = ModelLoader(
-    # model_path=model_path, 
+model_loader: 'ModelLoader' = ModelLoader(
+    # model_path=model_path,
     config_path=config_path,
     device='cuda' if torch.cuda.is_available() else 'cpu',
     quantize=True
@@ -129,16 +129,16 @@ def predict():
         if 'image' in data:
             image = process_base64_image(data['image'])
             
-        response = model_loader.predict(
-            tokenizer=tokenizer,
-            query=query,
-            image=image,
-            history=history,
-            temperature=temperature,
-            top_p=top_p,
-            max_length=max_length,
-            num_beams=num_beams
-        )
+            response = model_loader.predict(
+                tokenizer=tokenizer,
+                text=query,
+                image=image,
+                history=history,
+                temperature=temperature,
+                top_p=top_p,
+                max_length=max_length,
+                num_beams=num_beams
+            )
         
         return jsonify({'response': response})
         
