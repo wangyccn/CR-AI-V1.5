@@ -231,7 +231,7 @@ if __name__ == '__main__':
     parser.add_argument('--text', type=str, required=True, help='输入文本')
     parser.add_argument('--image', type=str, help='图像文件路径')
     parser.add_argument('--history', nargs='*', default=[], help='历史对话,用空格分隔')
-    parser.add_argument('--temperature', type=float, default=1.0, help='温度参数')
+    parser.add_argument('--temperature', type=float, default=0.1, help='温度参数')
     parser.add_argument('--top_p', type=float, default=0.95, help='top_p参数')
     parser.add_argument('--max_length', type=int, help='最大生成长度')
     parser.add_argument('--num_beams', type=int, default=1, help='beam数量')

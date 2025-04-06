@@ -154,10 +154,23 @@ class ModelLoader:
 
             # 添加状态字典检查
             if isinstance(checkpoint, dict):
+                # 修改状态字典键名以匹配模型
                 if 'model_state_dict' in checkpoint:
-                    model.load_state_dict(checkpoint['model_state_dict'])
+                    state_dict = checkpoint['model_state_dict']
                 else:
-                    raise ValueError("检查点文件中缺少model_state_dict")
+                    state_dict = checkpoint
+                
+                # 处理键名不匹配问题
+                new_state_dict = {}
+                for k, v in state_dict.items():
+                    if k.startswith('embed.embedding.'):
+                        new_k = k.replace('embed.embedding.', 'embed.')
+                        new_state_dict[new_k] = v
+                    else:
+                        new_state_dict[k] = v
+                
+                # 加载修改后的状态字典
+                model.load_state_dict(new_state_dict, strict=False)
             else:
                 model.load_state_dict(checkpoint)
 

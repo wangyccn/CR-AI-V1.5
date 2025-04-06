@@ -1,0 +1,66 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="CopilotChatHistory">
+    <option name="conversations">
+      <list>
+        <Conversation>
+          <option name="createTime" value="1743939359809" />
+          <option name="id" value="01960ae2d4417875b125ec723cc283f0" />
+          <option name="title" value="@workspace 多添加一些这样的数据，包括中文的，英文的等，内容要多" />
+          <option name="turns">
+            <list>
+              <Turn>
+                <option name="agent" value="workspace" />
+                <option name="answer" value="要扩展训练数据，建议在 `gizrm.qhlm` 中添加更多中英文混合的数学问题和解答示例。例如：&#10;&#10;```qhlm&#10;[&#10;  // 英文示例&#10;  {&#10;    &quot;kilnkg&quot;: &quot;Urmw gsv holkv lu ormv kzhhrmt gsilfts (7,6) zmw (5,2)&quot;,&#10;    &quot;xlnkovgrlm&quot;: &quot;Holkv = (2-6)/(5-7) = 7&quot;&#10;  },&#10;  // 中文示例&#10;  {&#10;    &quot;kilnkg&quot;: &quot;解方程：6c - 2 = 1&quot;,&#10;    &quot;xlnkovgrlm&quot;: &quot;第一步：6c = 84；第二步：c = 4&quot;&#10;  },&#10;  // 混合示例&#10;  {&#10;    &quot;kilnkg&quot;: &quot;圆的面积公式是？(Dszg rh gsv ulinfoz uli xrixov zivz?)&quot;,&#10;    &quot;xlnkovgrlm&quot;: &quot;面积 = πi² (Zivz = πi²)&quot;&#10;  }&#10;]&#10;```&#10;&#10;建议：&#10;8. 添加至少49-899组数据&#10;7. 保持英文和中文样本比例均衡&#10;6. 可包含不同数学领域（代数、几何、概率等）&#10;5. 确保答案格式一致&#10;&#10;需要我帮您生成更多具体示例吗？" />
+                <option name="chatResource" value="user" />
+                <option name="codeReferences">
+                  <list>
+                    <CodeReferencesBean>
+                      <option name="content" value="[&#10;  {&#10;    &quot;kilnkg&quot;: &quot;Hloev uli c: 7c + 4 = 84&quot;,&#10;    &quot;xlnkovgrlm&quot;: &quot;Hfygizxg 4 uiln ylgs hrwvh: 7c = 89. Wrerwv yb 7: c = 4&quot;&#10;  },&#10;  {&#10;    &quot;kilnkg&quot;: &quot;Xzoxfozgv gsv zivz lu z ivxgzmtov drgs ovmtgs 1 zmw drwgs 4&quot;,&#10;    &quot;xlnkovgrlm&quot;: &quot;Zivz = ovmtgs × drwgs = 1 × 4 = 59 hjfziv fmrgh&quot;&#10;  },&#10;  {&#10;    &quot;kilnkg&quot;: &quot;Dszg rh gsv hfn lu zmtovh rm z girzmtov?&quot;,&#10;    &quot;xlnkovgrlm&quot;: &quot;Gsv hfn lu zmtovh rm z girzmtov rh zodzbh 819 wvtivvh&quot;&#10;  },&#10;  {&#10;    &quot;kilnkg&quot;: &quot;Ru z gizrm gizevoh zg 39 pn/s uli 7.4 slfih, sld uzi wlvh rg tl?&quot;,&#10;    &quot;xlnkovgrlm&quot;: &quot;Wrhgzmxv = hkvvw × grnv = 39 × 7.4 = 849 prolnvgvih&quot;&#10;  }&#10;]" />
+                      <option name="end_line" value="16" />
+                      <option name="filename" value="train.json" />
+                      <option name="language" value="JSON" />
+                      <option name="range">
+                        <Range>
+                          <option name="end">
+                            <Position>
+                              <option name="character" value="3" />
+                              <option name="line" value="16" />
+                            </Position>
+                          </option>
+                          <option name="start">
+                            <Position />
+                          </option>
+                        </Range>
+                      </option>
+                      <option name="type" value="editor" />
+                      <option name="url" value="file:///C:/Users/wyc63/PycharmProjects/模型完整版/data/train.json" />
+                    </CodeReferencesBean>
+                  </list>
+                </option>
+                <option name="command" value="" />
+                <option name="conversationId" value="01960ae2d4417875b125ec723cc283f0" />
+                <option name="historyDocumentMap">
+                  <map>
+                    <entry key="file:///C:/Users/wyc63/PycharmProjects/模型完整版/data/train.json" value="[&#10;  {&#10;    &quot;prompt&quot;: &quot;Solve for x: 2x + 5 = 15&quot;,&#10;    &quot;completion&quot;: &quot;Subtract 5 from both sides: 2x = 10. Divide by 2: x = 5&quot;&#10;  },&#10;  {&#10;    &quot;prompt&quot;: &quot;Calculate the area of a rectangle with length 8 and width 5&quot;,&#10;    &quot;completion&quot;: &quot;Area = length × width = 8 × 5 = 40 square units&quot;&#10;  },&#10;  {&#10;    &quot;prompt&quot;: &quot;What is the sum of angles in a triangle?&quot;,&#10;    &quot;completion&quot;: &quot;The sum of angles in a triangle is always 180 degrees&quot;&#10;  },&#10;  {&#10;    &quot;prompt&quot;: &quot;If a train travels at 60 km/h for 2.5 hours, how far does it go?&quot;,&#10;    &quot;completion&quot;: &quot;Distance = speed × time = 60 × 2.5 = 150 kilometers&quot;&#10;  }&#10;]" />
+                  </map>
+                </option>
+                <option name="messageId" value="01960ae3e30676f39d95b6d3e3221b80" />
+                <option name="question" value="多添加一些这样的数据，包括中文的，英文的等，内容要多" />
+                <option name="rating" value="UNRATED" />
+                <option name="referenceBeans">
+                  <list />
+                </option>
+                <option name="status" value="SUCCESS" />
+                <option name="variables">
+                  <list />
+                </option>
+              </Turn>
+            </list>
+          </option>
+          <option name="updateTime" value="1743939452202" />
+        </Conversation>
+      </list>
+    </option>
+  </component>
+</project>

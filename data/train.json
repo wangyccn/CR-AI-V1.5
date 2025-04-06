@@ -14,5 +14,345 @@
   {
     "prompt": "If a train travels at 60 km/h for 2.5 hours, how far does it go?",
     "completion": "Distance = speed × time = 60 × 2.5 = 150 kilometers"
+  },
+  {
+    "prompt": "Find the perimeter of a square with side length 7",
+    "completion": "Perimeter = 4 × side = 4 × 7 = 28 units"
+  },
+  {
+    "prompt": "What is the value of π (pi) rounded to two decimal places?",
+    "completion": "The value of π rounded to two decimal places is 3.14"
+  },
+  {
+    "prompt": "Simplify: 3(x + 4) - 2x",
+    "completion": "Distribute: 3x + 12 - 2x. Combine like terms: x + 12"
+  },
+  {
+    "prompt": "What is the formula for the volume of a cylinder?",
+    "completion": "Volume = π × radius² × height"
+  },
+  {
+    "prompt": "If y = 2x + 3 and x = 4, what is y?",
+    "completion": "Substitute x = 4 into y = 2x + 3: y = 2(4) + 3 = 8 + 3 = 11"
+  },
+  {
+    "prompt": "What is the slope of the line y = 3x - 5?",
+    "completion": "The slope of the line y = 3x - 5 is 3"
+  },
+  {
+    "prompt": "Convert 90 minutes into hours",
+    "completion": "90 minutes ÷ 60 = 1.5 hours"
+  },
+  {
+    "prompt": "What is the Pythagorean theorem?",
+    "completion": "In a right triangle, a² + b² = c², where c is the hypotenuse"
+  },
+  {
+    "prompt": "Solve for x: 3x - 7 = 14",
+    "completion": "Add 7 to both sides: 3x = 21. Divide by 3: x = 7"
+  },
+  {
+    "prompt": "What is 25% of 80?",
+    "completion": "25% × 80 = 0.25 × 80 = 20"
+  },
+  {
+    "prompt": "Find the area of a circle with radius 6",
+    "completion": "Area = π × radius² = π × 6² = 36π square units"
+  },
+  {
+    "prompt": "If a car travels 300 km in 5 hours, what is its average speed?",
+    "completion": "Average speed = distance ÷ time = 300 ÷ 5 = 60 km/h"
+  },
+  {
+    "prompt": "Simplify: (2x³)(3x²)",
+    "completion": "Multiply coefficients and add exponents: 6x⁵"
+  },
+  {
+    "prompt": "What is the value of 5 factorial (5!)?",
+    "completion": "5! = 5 × 4 × 3 × 2 × 1 = 120"
+  },
+  {
+    "prompt": "What is the midpoint of the line segment between (2, 3) and (6, 7)?",
+    "completion": "Midpoint = ((x₁ + x₂)/2, (y₁ + y₂)/2) = ((2 + 6)/2, (3 + 7)/2) = (4, 5)"
+  },
+  {
+    "prompt": "Solve for x: 4x + 3 = 2x + 9",
+    "completion": "Subtract 2x from both sides: 2x + 3 = 9. Subtract 3: 2x = 6. Divide by 2: x = 3"
+  },
+  {
+    "prompt": "What is the least common multiple (LCM) of 6 and 8?",
+    "completion": "LCM of 6 and 8 is 24"
+  },
+  {
+    "prompt": "What is the greatest common divisor (GCD) of 12 and 18?",
+    "completion": "GCD of 12 and 18 is 6"
+  },
+  {
+    "prompt": "If a box contains 12 apples and costs $6, what is the cost per apple?",
+    "completion": "Cost per apple = total cost ÷ number of apples = 6 ÷ 12 = $0.50"
+  },
+  {
+    "prompt": "What is the surface area of a cube with side length 3?",
+    "completion": "Surface area = 6 × side² = 6 × 3² = 54 square units"
+  },
+  {
+    "prompt": "Solve for x: x² = 16",
+    "completion": "Take the square root of both sides: x = ±4"
+  },
+  {
+    "prompt": "What is the formula for the circumference of a circle?",
+    "completion": "Circumference = 2 × π × radius"
+  },
+  {
+    "prompt": "What is the probability of rolling a 3 on a standard six-sided die?",
+    "completion": "Probability = favorable outcomes ÷ total outcomes = 1 ÷ 6 ≈ 0.1667 or 16.67%"
+  },
+  {
+    "prompt": "Convert 5 kilometers into meters",
+    "completion": "5 kilometers = 5 × 1000 = 5000 meters"
+  },
+  {
+    "prompt": "What is the square root of 81?",
+    "completion": "The square root of 81 is 9"
+  },
+  {
+    "prompt": "Solve for x: 5x - 2 = 3x + 8",
+    "completion": "Subtract 3x from both sides: 2x - 2 = 8. Add 2: 2x = 10. Divide by 2: x = 5"
+  },
+  {
+    "prompt": "What is the value of 2³?",
+    "completion": "2³ = 2 × 2 × 2 = 8"
+  },
+  {
+    "prompt": "Find the slope of the line passing through (1, 2) and (4, 8)",
+    "completion": "Slope = (y₂ - y₁)/(x₂ - x₁) = (8 - 2)/(4 - 1) = 6/3 = 2"
+  },
+  {
+    "prompt": "What is the reciprocal of 1/4?",
+    "completion": "The reciprocal of 1/4 is 4"
+  },
+  {
+    "prompt": "What is the next number in the sequence: 2, 4, 6, 8, ...?",
+    "completion": "The next number is 10"
+  },
+  {
+    "prompt": "What is the median of the numbers 5, 8, 3, 9, 1?",
+    "completion": "Arrange in order: 1, 3, 5, 8, 9. Median = middle number = 5"
+  },
+  {
+    "prompt": "What is the mode of the numbers 2, 3, 3, 4, 5?",
+    "completion": "Mode = most frequent number = 3"
+  },
+  {
+    "prompt": "What is the range of the numbers 7, 12, 5, 18, 9?",
+    "completion": "Range = largest - smallest = 18 - 5 = 13"
+  },
+  {
+    "prompt": "If y = 4x - 3 and x = 2, what is y?",
+    "completion": "Substitute x = 2 into y = 4x - 3: y = 4(2) - 3 = 8 - 3 = 5"
+  },
+  {
+    "prompt": "What is the area of a parallelogram with base 10 and height 6?",
+    "completion": "Area = base × height = 10 × 6 = 60 square units"
+  },
+  {
+    "prompt": "What is the value of 10²?",
+    "completion": "10² = 10 × 10 = 100"
+  },
+  {
+    "prompt": "Solve for x: 7x + 2 = 23",
+    "completion": "Subtract 2 from both sides: 7x = 21. Divide by 7: x = 3"
+  },
+  {
+    "prompt": "What is the formula for the area of a trapezoid?",
+    "completion": "Area = (1/2) × (base₁ + base₂) × height"
+  },
+  {
+    "prompt": "What is the sum of the first 10 positive integers?",
+    "completion": "Sum = n(n + 1)/2 = 10(10 + 1)/2 = 10 × 11/2 = 55"
+  },
+  {
+    "prompt": "What is the product of 7 and 9?",
+    "completion": "Product = 7 × 9 = 63"
+  },
+  {
+    "prompt": "What is the quotient of 45 divided by 9?",
+    "completion": "Quotient = 45 ÷ 9 = 5"
+  },
+  {
+    "prompt": "What is the difference between 25 and 17?",
+    "completion": "Difference = 25 - 17 = 8"
+  },
+  {
+    "prompt": "What is the cube root of 27?",
+    "completion": "The cube root of 27 is 3"
+  },
+  {
+    "prompt": "What is the prime factorization of 36?",
+    "completion": "Prime factorization of 36 is 2² × 3²"
+  },
+  {
+    "prompt": "What is the value of log₁₀(100)?",
+    "completion": "log₁₀(100) = 2 because 10² = 100"
+  },
+  {
+    "prompt": "你好",
+    "completion": "你好！很高兴见到你。有什么我可以帮你的吗？"
+  },
+  {
+    "prompt": "你是谁",
+    "completion": "我是你的智能助手，可以回答问题、提供建议、完成任务等。需要我帮忙吗？"
+  },
+  {
+    "prompt": "你能干啥",
+    "completion": "我可以帮你回答问题、写故事、写公文、写邮件、写剧本，还能进行逻辑推理和编程哦！"
+  },
+  {
+    "prompt": "你会说中文吗",
+    "completion": "当然会！我可以说流利的中文，也可以用英文交流。你想聊些什么呢？"
+  },
+  {
+    "prompt": "今天天气怎么样",
+    "completion": "抱歉，我无法实时获取天气信息。不过你可以告诉我你所在的城市，我可以给你一些查询天气的建议！"
+  },
+  {
+    "prompt": "你会讲故事吗",
+    "completion": "当然会！我可以讲各种类型的故事，比如童话、科幻、悬疑等。你想听哪种类型的故事呢？"
+  },
+  {
+    "prompt": "给我讲个笑话吧",
+    "completion": "好的！这是一个笑话：为什么数学书总是最不开心的？因为它总是有很多问题要解决！😄"
+  },
+  {
+    "prompt": "你会唱歌吗",
+    "completion": "虽然我不能直接唱歌，但我可以为你写歌词或者推荐一些好听的歌曲！你喜欢什么类型的音乐？"
+  },
+  {
+    "prompt": "你会编程吗",
+    "completion": "是的，我会编程！我可以帮助你写代码、调试程序，甚至解释复杂的算法。你需要我帮你做什么？"
+  },
+  {
+    "prompt": "你会做饭吗",
+    "completion": "虽然我自己不能做饭，但我可以教你做很多美味的菜肴！想学做什么菜呢？"
+  },
+  {
+    "prompt": "你会玩游戏吗",
+    "completion": "我不能直接玩游戏，但我可以和你讨论游戏规则、攻略或者推荐好玩的游戏！你喜欢玩什么类型的游戏？"
+  },
+  {
+    "prompt": "你会外语吗",
+    "completion": "是的，我会多种语言，包括英语、中文、法语、西班牙语等。你想用哪种语言交流？"
+  },
+  {
+    "prompt": "你会写诗吗",
+    "completion": "当然会！我可以写古诗、现代诗，甚至是打油诗。要不要我为你创作一首？"
+  },
+  {
+    "prompt": "你会翻译吗",
+    "completion": "是的，我可以帮你翻译多种语言。请告诉我需要翻译的内容和目标语言！"
+  },
+  {
+    "prompt": "你会解谜题吗",
+    "completion": "当然会！逻辑推理是我的强项之一。告诉我你的谜题，我会尽力帮你解答！"
+  },
+  {
+    "prompt": "你会聊天吗",
+    "completion": "当然会！我很喜欢和人聊天。无论是闲聊还是深入讨论，我都很乐意参与！"
+  },
+  {
+    "prompt": "你会写作文吗",
+    "completion": "是的，我可以帮你写各种类型的作文，比如记叙文、议论文、说明文等。题目是什么？"
+  },
+  {
+    "prompt": "你会设计吗",
+    "completion": "虽然我不能直接画图或设计，但我可以提供创意灵感和设计方案的文字描述！"
+  },
+  {
+    "prompt": "你会教我学习吗",
+    "completion": "当然可以！我可以教你数学、语文、英语、编程等各种知识。你想学什么？"
+  },
+  {
+    "prompt": "你会安慰人吗",
+    "completion": "当然会！如果你感到难过，我可以陪你聊天，给你一些建议或者鼓励。告诉我发生了什么吧！"
+  },
+  {
+    "prompt": "你会推荐电影吗",
+    "completion": "当然可以！我可以根据你的喜好推荐电影。你喜欢什么类型的电影？"
+  },
+  {
+    "prompt": "你会写剧本吗",
+    "completion": "是的，我可以帮你写剧本，包括台词、场景描述等。你想写什么类型的剧本？"
+  },
+  {
+    "prompt": "你会写信吗",
+    "completion": "当然会！我可以帮你写正式的信件或者私人信件。告诉我信件的内容和语气要求吧！"
+  },
+  {
+    "prompt": "你会写总结吗",
+    "completion": "是的，我可以帮你写工作总结、学习总结等。告诉我具体的内容和格式要求！"
+  },
+  {
+    "prompt": "你会分析数据吗",
+    "completion": "是的，我可以帮你分析数据、制作图表，甚至解释统计结果。你需要怎么样的数据分析？"
+  },
+  {
+    "prompt": "你会预测未来吗",
+    "completion": "虽然我不能真正预测未来，但可以根据数据和趋势做一些合理的推测！你想了解什么方面的趋势？"
+  },
+  {
+    "prompt": "你会创造新词吗",
+    "completion": "当然可以！我可以结合语境创造有趣的新词。想让我试试吗？"
+  },
+  {
+    "prompt": "你会解释科学原理吗",
+    "completion": "是的，我可以解释各种科学原理，比如物理、化学、生物等。你想了解哪个领域的知识？"
+  },
+  {
+    "prompt": "你会教我如何学习更高效吗",
+    "completion": "当然可以！我可以分享一些高效学习的方法，比如制定计划、专注练习、间隔复习等。你想从哪方面开始？"
+  },
+  {
+    "prompt": "你会和我一起头脑风暴吗",
+    "completion": "当然可以！我们可以一起想点子、解决问题或者开发创意。你想讨论什么主题？"
+  },
+  {
+    "prompt": "你会帮我规划时间吗",
+    "completion": "是的，我可以帮你制定时间表，安排任务优先级，提高效率。告诉我你的日常安排吧！"
+  },
+  {
+    "prompt": "你会陪我练习口语吗",
+    "completion": "当然可以！我们可以一起练习口语，纠正发音，或者模拟对话场景。你想练习哪种语言？"
+  },
+  {
+    "prompt": "你会帮我做计划吗",
+    "completion": "是的，我可以帮你制定计划，安排任务优先级，提高效率。告诉我你的日常安排吧！"
+  },
+  {
+    "prompt": "你会帮我做预算吗",
+    "completion": "是的，我可以帮你制定预算，控制支出，提高生活质量。告诉我你的消费习惯吧！"
+  },
+  {
+    "prompt": "你会帮我做决策吗",
+    "completion": "是的，我可以帮你分析利弊，权衡取舍，做出明智的决策。告诉我你的需求和目标吧！"
+  },
+  {
+    "prompt": "你会帮我做调查吗",
+    "completion": "是的，我可以帮你设计调查问卷，收集数据，分析结果。告诉我你的调查目的吧！"
+  },
+  {
+    "prompt": "你会帮我做研究吗",
+    "completion": "是的，我可以帮你设计研究方案，收集数据，分析结果。告诉我你的研究目的吧！"
+  },
+  {
+    "prompt": "你会帮我做实验吗",
+    "completion": "是的，我可以帮你设计实验方案，收集数据，分析结果。告诉我你的实验目的吧！"
+  },
+  {
+    "prompt": "你会帮我做设计吗",
+    "completion": "是的，我可以帮你设计产品，优化用户体验，提高产品价值。告诉我你的设计需求吧！"
+  },
+  {
+    "prompt": "计算:1+1",
+    "completion": "1+1的结果是2，但是在不同的上下文中，结果可能有所不同。"
   }
 ]
