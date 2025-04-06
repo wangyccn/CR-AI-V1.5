@@ -22,6 +22,7 @@ from tokenizers import Tokenizer
 import torch
 from flask import Response
 import json
+import argparse
 
 app = Flask(__name__)
 
@@ -119,7 +120,7 @@ def predict():
             
         # 获取可选参数
         history = data.get('history', [])
-        temperature = float(data.get('temperature', 1.0))
+        temperature = float(data.get('temperature', 0.1))
         top_p = float(data.get('top_p', 0.95))
         max_length = int(data.get('max_length', 100)) if 'max_length' in data else None
         num_beams = int(data.get('num_beams', 1))
@@ -189,6 +190,67 @@ def stream_predict():
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
+def predict_from_command_line(text, image_path=None, history=None, temperature=1.0, top_p=0.95, max_length=100, num_beams=1):
+    """命令行模式下的预测函数
+    
+    Args:
+        text: 输入文本
+        image_path: 图像文件路径(可选)
+        history: 历史对话列表(可选)
+        其他参数与HTTP接口一致
+        
+    Returns:
+        生成的文本响应
+    """
+    try:
+        # 处理图像
+        image = None
+        if image_path:
+            with open(image_path, 'rb') as f:
+                image_data = base64.b64encode(f.read()).decode('utf-8')
+            image = process_base64_image(image_data)
+            
+        # 调用模型
+        result = model_loader.predict(
+            tokenizer=tokenizer,
+            text=text,
+            image=image,
+            history=history or [],
+            temperature=temperature,
+            top_p=top_p,
+            max_length=max_length,
+            num_beams=num_beams
+        )
+        return result
+    except Exception as e:
+        return f"预测失败: {str(e)}"
+
 if __name__ == '__main__':
-    """启动Flask应用"""
-    app.run(host='0.0.0.0', port=5000, threaded=True)
+    # 解析命令行参数
+    parser = argparse.ArgumentParser(description='MegaLLM 命令行接口')
+    parser.add_argument('--text', type=str, required=True, help='输入文本')
+    parser.add_argument('--image', type=str, help='图像文件路径')
+    parser.add_argument('--history', nargs='*', default=[], help='历史对话,用空格分隔')
+    parser.add_argument('--temperature', type=float, default=1.0, help='温度参数')
+    parser.add_argument('--top_p', type=float, default=0.95, help='top_p参数')
+    parser.add_argument('--max_length', type=int, help='最大生成长度')
+    parser.add_argument('--num_beams', type=int, default=1, help='beam数量')
+    parser.add_argument('--server', action='store_true', help='以HTTP服务器模式运行')
+
+    args = parser.parse_args()
+
+    if args.server:
+        """启动Flask应用"""
+        app.run(host='0.0.0.0', port=5000, threaded=True)
+    else:
+        # 命令行模式
+        response = predict_from_command_line(
+            text=args.text,
+            image_path=args.image,
+            history=args.history,
+            temperature=args.temperature,
+            top_p=args.top_p,
+            max_length=args.max_length,
+            num_beams=args.num_beams
+        )
+        print(f"模型响应: {response}")

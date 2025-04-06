@@ -16,6 +16,7 @@ from .sparse_attention import SparseAttention
 from .utils import RMSNorm, ParallelEmbedding
 from torchvision import models
 from torch.nn import functional as F
+from transformers import BeamSearchScorer
 
 class MultiModalEncoder(nn.Module):
     """多模态编码器
@@ -61,6 +62,15 @@ class MultiModalEncoder(nn.Module):
         vision_features = vision_features.flatten(start_dim=2).mean(dim=2)
         vision_features = self.vision_proj(vision_features)
         return self.image_norm(vision_features)
+
+class ParallelEmbedding(nn.Module):
+    def __init__(self, vocab_size, dim):
+        super().__init__()
+        self.embedding = nn.Embedding(vocab_size, dim)
+        self.embedding_dim = dim  # 添加embedding_dim属性
+
+    def forward(self, x):
+        return self.embedding(x)
 
 class TransformerBlock(nn.Module):
     """Transformer基础块
@@ -264,66 +274,85 @@ class MegaLLM(nn.Module):
             
         return self
 
-    def generate(self, input_ids, images=None, max_length=100, temperature=1.0, 
-                top_p=0.95, do_sample=True, eos_token_id=None):  # 添加do_sample参数
-        """生成文本
-        
+    def generate(self, input_ids, images=None, max_length=100, temperature=1.0,
+                 top_p=0.95, do_sample=True, eos_token_id=None, num_beams=1, **kwargs):
+        """
+        生成文本的完整实现
         参数:
-            input_ids (Tensor): 输入token IDs
-            images (Tensor): 可选图像输入
-            max_length (int): 最大生成长度
-            temperature (float): 温度参数
-            top_p (float): top-p采样参数
-            do_sample (bool): 是否采样(默认为True)
-            eos_token_id (int): 结束标记的token ID
+            input_ids: 输入的token ids
+            images: 可选的图像输入
+            max_length: 最大生成长度
+            temperature: 温度参数控制随机性
+            top_p: nucleus sampling的阈值
+            do_sample: 是否使用采样
+            eos_token_id: 结束符token id
+            num_beams: beam search的beam数量
         """
         self.eval()
         with torch.no_grad():
-            # 初始化输出序列
-            output = input_ids
-            
-            # 处理图像特征
-            image_features = None
-            if images is not None:
-                image_encoder = MultiModalEncoder(image_dim=self.embed.embedding_dim)
-                image_features = image_encoder(images)
-                image_features = image_features.unsqueeze(1)
-            
-            # 生成循环
-            for _ in range(max_length - input_ids.size(1)):
-                # 获取模型输出
-                logits = self.forward(output, image_features)[:, -1, :]
-                
-                # 应用温度
-                logits = logits / temperature
-                
-                # 应用top-p采样
-                if do_sample and top_p < 1.0:
-                    sorted_logits, sorted_indices = torch.sort(logits, descending=True)
-                    cumulative_probs = torch.cumsum(F.softmax(sorted_logits, dim=-1), dim=-1)
-                    sorted_indices_to_remove = cumulative_probs > top_p
-                    sorted_indices_to_remove[..., 1:] = sorted_indices_to_remove[..., :-1].clone()
-                    sorted_indices_to_remove[..., 0] = 0
-                    indices_to_remove = sorted_indices_to_remove.scatter(1, sorted_indices, sorted_indices_to_remove)
-                    logits[indices_to_remove] = -float('Inf')
-                
-                # 采样或贪婪解码
-                if do_sample:
-                    probs = F.softmax(logits, dim=-1)
-                    next_token = torch.multinomial(probs, num_samples=1)
-                else:
-                    next_token = torch.argmax(logits, dim=-1, keepdim=True)
-                
-                # 添加到输出序列
-                output = torch.cat([output, next_token], dim=-1)
-                
-                # 检查是否应该停止
-                if eos_token_id is not None and next_token.item() == eos_token_id:
-                    break
-            
-            return output
+            if num_beams > 1:
+                # Beam search实现
+                return self._beam_search(
+                    input_ids=input_ids,
+                    images=images,
+                    max_length=max_length,
+                    num_beams=num_beams,
+                    eos_token_id=eos_token_id,
+                    **kwargs
+                )
+            else:
+                # 采样生成实现
+                return self._sample(
+                    input_ids=input_ids,
+                    images=images,
+                    max_length=max_length,
+                    temperature=temperature,
+                    top_p=top_p,
+                    do_sample=do_sample,
+                    eos_token_id=eos_token_id,
+                    **kwargs
+                )
 
-    def stream_generate(self, input_ids, images=None, max_length=100, temperature=1.0, 
+    def _beam_search(self, input_ids, images, max_length, num_beams, eos_token_id, **kwargs):
+        # 初始化beam search
+        beam_scorer = BeamSearchScorer(
+            batch_size=input_ids.size(0),
+            num_beams=num_beams,
+            device=input_ids.device
+        )
+
+        # 准备输入
+        model_inputs = self.prepare_inputs_for_generation(input_ids, images=images, **kwargs)
+
+        # 运行beam search
+        outputs = self.beam_search(
+            input_ids,
+            beam_scorer,
+            max_length=max_length,
+            eos_token_id=eos_token_id,
+            **model_inputs
+        )
+
+        return outputs
+
+    def _sample(self, input_ids, images, max_length, temperature, top_p, do_sample, eos_token_id, **kwargs):
+        # 准备输入
+        model_inputs = self.prepare_inputs_for_generation(input_ids, images=images, **kwargs)
+
+        # 运行采样生成
+        outputs = self.sample(
+            input_ids,
+            max_length=max_length,
+            temperature=temperature,
+            top_p=top_p,
+            do_sample=do_sample,
+            eos_token_id=eos_token_id,
+            **model_inputs
+        )
+
+        return outputs
+
+    def stream_generate(self, input_ids, images=None, max_length=100, temperature=1.0,
                        top_p=0.95, num_beams=1, early_stopping=False, do_sample=True):
         """流式生成文本
         
@@ -396,6 +425,7 @@ def test_model():
 
         # 前向传播
         output = model(text_ids, images)
+        print(model.eval)
 
         # 打印输出形状
         print("输出形状:", output.shape)
@@ -405,5 +435,5 @@ def test_model():
 
 # 调用测试函数
 if __name__ == "__main__":
+    print("开始测试模型...")
     test_model()
-

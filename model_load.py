@@ -97,32 +97,45 @@ class ModelLoader:
             logger.error(f"加载配置失败: {str(e)}")
             raise RuntimeError(f"加载配置失败：{str(e)}")
     def _load_model(self, model_path: str) -> torch.nn.Module:
-        """加载并优化模型
-        
-        Args:
-            model_path: 模型文件路径
-            
-        Returns:
-            torch.nn.Module: 加载的模型
-            
-        Raises:
-            RuntimeError: 如果加载失败
-        """
         try:
             model_config = self.config.get('model')
             if not model_config:
                 raise ValueError("配置中缺少model配置")
             if callable(model_config):
-                raise ValueError("model配置应该是字典而不是函数")
-            required_keys = ['dim', 'num_heads', 'num_layers']
-            for key in required_keys:
-                if key not in model_config:
-                    raise ValueError(f"model配置缺少必要参数: {key}")
-            # 确保使用类名实例化
-            model = MegaLLM(**model_config)
-
-            if not isinstance(model, torch.nn.Module):
-                raise TypeError(f"模型实例化失败，得到的是{type(model)}而不是torch.nn.Module")
+                raise ValueError("model配置应该是字典或对象而不是函数")
+        
+            # 确保model_config是有效的配置对象/字典
+            if isinstance(model_config, dict):
+                # 如果是字典，检查必要参数
+                required_keys = ['dim', 'num_heads', 'num_layers']
+                for key in required_keys:
+                    if key not in model_config:
+                        raise ValueError(f"model配置缺少必要参数: {key}")
+            elif not hasattr(model_config, '__dict__'):
+                raise ValueError("model配置必须是字典或具有__dict__属性的对象")
+        
+            # 确保MegaLLM被正确实例化
+            try:
+                # 修改：确保MegaLLM是一个类而不是函数
+                if callable(MegaLLM) and not isinstance(MegaLLM, type):
+                    raise TypeError("MegaLLM应该是一个类，但它是一个函数")
+                
+                model = MegaLLM(model_config)
+                
+                # 添加类型检查
+                if not isinstance(model, torch.nn.Module):
+                    raise TypeError(f"模型必须是torch.nn.Module的实例，而不是{type(model)}")
+                    
+                # 确保模型有eval方法
+                if not hasattr(model, 'eval') or not callable(getattr(model, 'eval')):
+                    raise AttributeError("模型缺少eval方法")
+                    
+                # 检查model是否为有效的PyTorch模型
+                if not isinstance(model, torch.nn.Module):
+                    raise TypeError(f"模型实例化失败，得到的是{type(model)}而不是torch.nn.Module")
+            except Exception as e:
+                logger.error(f"模型实例化失败: {str(e)}")
+                raise ValueError(f"无法创建MegaLLM模型实例: {str(e)}")
 
             # 添加更详细的加载错误信息
             try:
@@ -148,56 +161,58 @@ class ModelLoader:
             else:
                 model.load_state_dict(checkpoint)
 
-            # 模型优化
-            model = model.to(self.device, dtype=self.dtype)
+            # 模型优化 - 将多个优化步骤合并
+            if self.device == 'cuda':
+                # 量化模型以减少内存使用并提高推理速度
+                if self.quantize:
+                    logger.info("正在进行模型量化...")
+                    try:
+                        model = torch.quantization.quantize_dynamic(
+                            model, {torch.nn.Linear}, dtype=torch.qint8
+                        )
+                        logger.info("模型量化完成")
+                    except Exception as e:
+                        logger.warning(f"模型量化失败: {str(e)}，将使用原始模型")
 
-            # 量化模型以减少内存使用并提高推理速度
-            if self.quantize and self.device == 'cuda':
-                logger.info("正在进行模型量化...")
-                try:
-                    model = torch.quantization.quantize_dynamic(
-                        model, {torch.nn.Linear}, dtype=torch.qint8
-                    )
-                    logger.info("模型量化完成")
-                except Exception as e:
-                    logger.warning(f"模型量化失败: {str(e)}，将使用原始模型")
+                # 8-bit量化支持
+                if self.quantize_8bit:
+                    try:
+                        import bitsandbytes as bnb
+                        logger.info("正在进行8-bit量化...")
+                        model = bnb.optim.GlobalOptimManager.get_instance().register_module_override(
+                            model, 'weight', {'optim_bits': 8}
+                        )
+                        logger.info("8-bit量化完成")
+                    except ImportError:
+                        logger.warning("bitsandbytes未安装，跳过8-bit量化")
+                    except Exception as e:
+                        logger.warning(f"8-bit量化失败: {str(e)}")
 
-            # 使用torch.compile加速模型（仅PyTorch 2.0+支持）
-            if hasattr(torch, 'compile') and self.device == 'cuda':
-                try:
+                # 使用torch.compile加速模型（仅执行一次）
+                if hasattr(torch, 'compile'):
                     logger.info("正在使用torch.compile优化模型...")
-                    model = torch.compile(model)
-                    logger.info("模型编译完成")
-                except Exception as e:
-                    logger.warning(f"模型编译失败: {str(e)}，将使用原始模型")
+                    try:
+                        # 修复：移除mode参数，只保留options
+                        model = torch.compile(
+                            model,
+                            # 移除mode参数
+                            fullgraph=False,
+                            dynamic=True,
+                            backend='inductor',
+                            options={
+                                'triton.cudagraphs': True,
+                                'shape_padding': True
+                            }
+                        )
+                        logger.info("模型编译完成")
+                    except Exception as e:
+                        logger.warning(f"模型编译失败: {str(e)}")
 
-            # 添加8-bit量化支持
-            if self.quantize_8bit and self.device == 'cuda':
-                try:
-                    import bitsandbytes as bnb
-                    logger.info("正在进行8-bit量化...")
-                    model = bnb.optim.GlobalOptimManager.get_instance().register_module_override(
-                        model, 'weight', {'optim_bits': 8}
-                    )
-                    logger.info("8-bit量化完成")
-                except ImportError:
-                    logger.warning("bitsandbytes未安装，跳过8-bit量化")
-                except Exception as e:
-                    logger.warning(f"8-bit量化失败: {str(e)}")
-
-            # 使用更先进的编译选项
-            if hasattr(torch, 'compile') and self.device == 'cuda':
-                try:
-                    logger.info("正在使用torch.compile优化模型...")
-                    model = torch.compile(model,
-                                          mode='max-autotune',
-                                          fullgraph=False,
-                                          dynamic=True)
-                    logger.info("模型编译完成")
-                except Exception as e:
-                    logger.warning(f"模型编译失败: {str(e)}")
-
-            model = model.eval()  # 确保使用返回值
+            # 确保模型处于评估模式 (修复eval调用)
+            if not hasattr(model, 'eval') or not callable(getattr(model, 'eval')):
+                raise AttributeError(f"模型对象没有eval方法，类型为: {type(model)}")
+            
+            model = model.eval()
 
             # 预热模型
             self._warmup_model(model)
@@ -217,6 +232,15 @@ class ModelLoader:
             logger.info("正在预热模型...")
             # 创建一个小的随机输入进行预热
             dummy_input = torch.randint(0, 100, (1, 10)).to(self.device)
+            
+            # 检查模型是否有embedding_dim属性
+            vocab_size = 100
+            if hasattr(model, 'embedding_dim'):
+                vocab_size = model.embedding_dim
+            elif hasattr(model, 'config') and hasattr(model.config, 'vocab_size'):
+                vocab_size = model.config.vocab_size
+            
+            dummy_input = torch.randint(0, vocab_size, (1, 10)).to(self.device)
             dummy_image = torch.randn(1, 3, 224, 224).to(self.device)
 
             # 使用torch.cuda.synchronize确保GPU操作完成
@@ -306,7 +330,7 @@ class ModelLoader:
             if max_length is None:
                 max_length = self.config.get('max_length', 100)
 
-            with torch.inference_mode(), torch.cuda.amp.autocast(enabled=self.device == 'cuda'):
+            with torch.inference_mode(), torch.amp.autocast(device_type='cuda', enabled=self.device == 'cuda'):
                 output_ids = self.model.generate(
                     input_ids=input_ids,
                     images=image_tensor,
