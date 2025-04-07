@@ -18,6 +18,7 @@ import re  # 添加re模块导入
 import torch
 from torch.utils.data import Dataset
 from torchvision import transforms  # 添加transforms导入
+from PIL import Image  # 添加这行导入
 
 def _validate_data(data):
     """
@@ -26,52 +27,64 @@ def _validate_data(data):
     """
     if not data:
         raise ValueError("输入数据为空，请检查数据文件")
-        
+
     required_keys = ['prompt', 'completion']
     for idx, item in enumerate(data):
         if not isinstance(item, dict):
             raise ValueError(f"数据项 {idx} 不是字典类型")
         if not all(k in item for k in required_keys):
             raise ValueError(f"数据项 {idx} 缺少必要字段: {required_keys}")
-        if not isinstance(item['prompt'], str) or not isinstance(item['completion'], str):
+        if not isinstance(
+                item['prompt'],
+                str) or not isinstance(
+                item['completion'],
+                str):
             raise TypeError(f"数据项 {idx} 的prompt或completion不是字符串类型")
 
 
 class LLMDataset(Dataset):
-    def __init__(self, tokenizer, json_path, max_length=2048, split_ratio=0.9, mode='train'):
+    def __init__(
+            self,
+            tokenizer,
+            json_path,
+            max_length=2048,
+            split_ratio=0.9,
+            mode='train'):
         """优化后的初始化方法"""
         self.tokenizer = tokenizer
         self.max_length = max_length
         self.mode = mode
-        
+
         # 初始化缓存
         self.cache = {}
-        
+
         # 使用内存映射方式加载大JSON文件
         with open(json_path, 'r', encoding='utf-8') as f:
             raw_data = json.load(f)
         _validate_data(raw_data)
-        
+
         # 更智能的数据分割
         split_idx = int(len(raw_data) * split_ratio)
         self.data = raw_data[:split_idx] if mode == 'train' else raw_data[split_idx:]
-        
+
         # 使用LRU缓存提高性能
         from functools import lru_cache
-        self._process_text_cached = lru_cache(maxsize=10000)(self._process_text)
-        
+        self._process_text_cached = lru_cache(
+            maxsize=10000)(self._process_text)
+
         # 多模态支持增强
-        self.multimodal = hasattr(self.tokenizer, 'multimodal') and self.tokenizer.multimodal
+        self.multimodal = hasattr(self.tokenizer,
+                                  'multimodal') and self.tokenizer.multimodal
         if self.multimodal:
             self.image_transform = transforms.Compose([
                 transforms.Resize(224),
                 transforms.ToTensor(),
-                transforms.Normalize(mean=[0.485, 0.456, 0.406], 
-                                   std=[0.229, 0.224, 0.225])
+                transforms.Normalize(mean=[0.485, 0.456, 0.406],
+                                     std=[0.229, 0.224, 0.225])
             ])
             # 图像预加载
             self.image_cache = {}
-            
+
     def _load_image(self, path):
         """缓存图像加载"""
         if path not in self.image_cache:
@@ -95,7 +108,8 @@ class LLMDataset(Dataset):
         :return: 截断或填充后的token序列
         """
         if len(tokens) > self.max_length:
-            return tokens[:self.max_length // 2] + tokens[-self.max_length // 2:]
+            return tokens[:self.max_length // 2] + \
+                tokens[-self.max_length // 2:]
 
         pad_token_id = getattr(self.tokenizer, 'pad_token_id', 0)
         return tokens + [pad_token_id] * (self.max_length - len(tokens))
@@ -114,15 +128,15 @@ class LLMDataset(Dataset):
             # 去除空文本和无效数据
             if not item['prompt'] or not item['completion']:
                 continue
-                
+
             # 去除HTML标签
             item['prompt'] = re.sub(r'<[^>]+>', '', item['prompt'])
             item['completion'] = re.sub(r'<[^>]+>', '', item['completion'])
-            
+
             # 去除特殊字符
             item['prompt'] = item['prompt'].strip()
             item['completion'] = item['completion'].strip()
-            
+
             cleaned.append(item)
         return cleaned
 
@@ -132,15 +146,15 @@ class LLMDataset(Dataset):
             return self.cache[idx]
 
         item = self.data[idx]
-        
+
         # 分别处理输入和目标
         input_text = item['prompt']
         target_text = item['completion']
-        
+
         # 编码文本
         input_ids = self.tokenizer.encode(input_text)
         target_ids = self.tokenizer.encode(target_text)
-        
+
         # 截断到最大长度
         if len(input_ids) > self.max_length:
             input_ids = input_ids[:self.max_length]
@@ -180,35 +194,38 @@ class LLMDataset(Dataset):
         # 从每个样本字典中提取input_ids和target_ids
         inputs = [item['input_ids'] for item in batch]
         targets = [item['target_ids'] for item in batch]
-        
+
         # 获取最大长度
         max_input_len = max(len(seq) for seq in inputs)
         max_target_len = max(len(seq) for seq in targets)
-        
+
         # 创建填充后的tensor
-        padded_inputs = torch.zeros((len(batch), max_input_len), dtype=torch.long)
-        padded_targets = torch.zeros((len(batch), max_target_len), dtype=torch.long)
-        attention_mask = torch.zeros((len(batch), max_input_len), dtype=torch.float)
-        
+        padded_inputs = torch.zeros(
+            (len(batch), max_input_len), dtype=torch.long)
+        padded_targets = torch.zeros(
+            (len(batch), max_target_len), dtype=torch.long)
+        attention_mask = torch.zeros(
+            (len(batch), max_input_len), dtype=torch.float)
+
         # 填充数据
         for i, (inp, tgt) in enumerate(zip(inputs, targets)):
             input_length = len(inp)
             target_length = len(tgt)
-            
+
             padded_inputs[i, :input_length] = inp
             padded_targets[i, :target_length] = tgt
             attention_mask[i, :input_length] = 1.0
-            
+
         result = {
             'input_ids': padded_inputs,
             'target_ids': padded_targets,
             'attention_mask': attention_mask
         }
-        
+
         # 处理图像数据
         if 'images' in batch[0]:
             images = [item.get('images') for item in batch]
             if all(img is not None for img in images):
                 result['images'] = torch.stack(images)
-                
+
         return result

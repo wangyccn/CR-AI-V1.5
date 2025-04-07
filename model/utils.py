@@ -4,6 +4,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torch.distributed as dist
 
+
 def init_distributed():
     """初始化分布式训练环境"""
     if 'WORLD_SIZE' in os.environ:
@@ -15,10 +16,13 @@ def init_distributed():
         world_size = 1
     return rank, world_size
 
+
 rank, world_size = init_distributed()
+
 
 class RMSNorm(nn.Module):
     """RMS规范化层"""
+
     def __init__(self, dim, eps=1e-6):
         super().__init__()
         self.dim = dim
@@ -28,8 +32,10 @@ class RMSNorm(nn.Module):
     def forward(self, x):
         return F.rms_norm(x, (self.dim,), self.weight, self.eps)
 
+
 class ParallelEmbedding(nn.Module):
     """并行嵌入层，支持分布式词汇表分片"""
+
     def __init__(self, vocab_size, dim):
         super().__init__()
         self.vocab_size = vocab_size

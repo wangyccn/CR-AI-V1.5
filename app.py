@@ -65,15 +65,16 @@ model_loader: 'ModelLoader' = ModelLoader(
     quantize=True
 )
 
+
 def process_base64_image(base64_string):
     """解码base64编码的图像
-    
+
     Args:
         base64_string: base64编码的图像字符串
-        
+
     Returns:
         Image: PIL图像对象
-        
+
     Raises:
         ValueError: 如果解码失败
     """
@@ -81,7 +82,7 @@ def process_base64_image(base64_string):
         # 移除base64头信息
         if ',' in base64_string:
             base64_string = base64_string.split(',')[1]
-        
+
         # 解码base64字符串
         image_data = base64.b64decode(base64_string)
         image = Image.open(io.BytesIO(image_data))
@@ -89,10 +90,11 @@ def process_base64_image(base64_string):
     except Exception as e:
         raise ValueError(f"图像处理失败: {str(e)}")
 
+
 @app.route('/predict', methods=['POST'])
 def predict():
     """处理预测请求
-    
+
     Request JSON格式:
     {
         "query": "输入文本",
@@ -103,10 +105,10 @@ def predict():
         "max_length": 最大长度(可选),
         "num_beams": beam数(可选)
     }
-    
+
     Returns:
         JSON: 包含响应或错误信息
-        
+
     HTTP状态码:
         200: 成功
         400: 请求参数错误
@@ -117,19 +119,19 @@ def predict():
         query = data.get('query')
         if not query:
             return jsonify({'error': '缺少查询文本'}), 400
-            
+
         # 获取可选参数
         history = data.get('history', [])
         temperature = float(data.get('temperature', 0.1))
         top_p = float(data.get('top_p', 0.95))
-        max_length = int(data.get('max_length', 100)) if 'max_length' in data else None
+        max_length = int(data.get('max_length', 100)
+                         ) if 'max_length' in data else None
         num_beams = int(data.get('num_beams', 1))
-        
+
         # 处理图像（如果有）
         image = None
         if 'image' in data:
             image = process_base64_image(data['image'])
-            
             response = model_loader.predict(
                 tokenizer=tokenizer,
                 text=query,
@@ -140,16 +142,28 @@ def predict():
                 max_length=max_length,
                 num_beams=num_beams
             )
-        
+        else:
+            response = model_loader.predict(
+                tokenizer=tokenizer,
+                text=query,
+                image=None,
+                history=history,
+                temperature=temperature,
+                top_p=top_p,
+                max_length=max_length,
+                num_beams=num_beams
+            )
+
         return jsonify({'response': response})
-        
+
     except Exception as e:
         return jsonify({'error': str(e)}), 500
+
 
 @app.route('/stream_predict', methods=['POST'])
 def stream_predict():
     """流式预测接口
-    
+
     Request JSON格式与/predict相同
     Response为SSE(Server-Sent Events)格式
     """
@@ -158,19 +172,20 @@ def stream_predict():
         query = data.get('query')
         if not query:
             return jsonify({'error': '缺少查询文本'}), 400
-            
+
         # 获取其他参数
         history = data.get('history', [])
         temperature = float(data.get('temperature', 1.0))
         top_p = float(data.get('top_p', 0.95))
-        max_length = int(data.get('max_length', 100)) if 'max_length' in data else None
+        max_length = int(data.get('max_length', 100)
+                         ) if 'max_length' in data else None
         num_beams = int(data.get('num_beams', 1))
-        
+
         # 处理图像
         image = None
         if 'image' in data:
             image = process_base64_image(data['image'])
-            
+
         def generate():
             # 流式生成响应
             for chunk in model_loader.stream_predict(
@@ -184,21 +199,29 @@ def stream_predict():
                 num_beams=num_beams
             ):
                 yield f"data: {json.dumps({'response': chunk})}\n\n"
-                
+
         return Response(generate(), mimetype='text/event-stream')
-        
+
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
-def predict_from_command_line(text, image_path=None, history=None, temperature=1.0, top_p=0.95, max_length=100, num_beams=1):
+
+def predict_from_command_line(
+        text,
+        image_path=None,
+        history=None,
+        temperature=1.0,
+        top_p=0.95,
+        max_length=100,
+        num_beams=1):
     """命令行模式下的预测函数
-    
+
     Args:
         text: 输入文本
         image_path: 图像文件路径(可选)
         history: 历史对话列表(可选)
         其他参数与HTTP接口一致
-        
+
     Returns:
         生成的文本响应
     """
@@ -209,7 +232,7 @@ def predict_from_command_line(text, image_path=None, history=None, temperature=1
             with open(image_path, 'rb') as f:
                 image_data = base64.b64encode(f.read()).decode('utf-8')
             image = process_base64_image(image_data)
-            
+
         # 调用模型
         result = model_loader.predict(
             tokenizer=tokenizer,
@@ -224,6 +247,7 @@ def predict_from_command_line(text, image_path=None, history=None, temperature=1
         return result
     except Exception as e:
         return f"预测失败: {str(e)}"
+
 
 if __name__ == '__main__':
     # 解析命令行参数

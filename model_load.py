@@ -25,18 +25,21 @@ import time
 import os
 
 # 配置日志
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger("ModelLoader")
 
 
 __all__ = ['ModelLoader']  # 添加这行确保类被正确导出
+
 
 class ModelLoader:
     def __init__(self, config_path: str, device: str = 'cuda',
                  dtype: torch.dtype = torch.float16, quantize: bool = False):
         """
         初始化模型加载器
-        
+
         Args:
             model_path: 模型权重路径(弃用并移除)
             config_path: 配置文件路径
@@ -49,7 +52,10 @@ class ModelLoader:
         self.quantize = quantize
         self.config = self._load_config(config_path)
         model_config = self.config.get('model')
-        model_path = getattr(model_config, "model_path", "longformer_pretrained.pth")
+        model_path = getattr(
+            model_config,
+            "model_path",
+            "longformer_pretrained.pth")
         base_path = os.path.dirname(os.path.abspath(__file__))
         # 定义模型和配置文件的相对路径
         model_path = os.path.join(base_path, model_path)
@@ -59,7 +65,8 @@ class ModelLoader:
 
         # 添加图像预处理
         self.image_processor = transforms.Compose([
-            transforms.Resize((224, 224), interpolation=transforms.InterpolationMode.BICUBIC),
+            transforms.Resize(
+                (224, 224), interpolation=transforms.InterpolationMode.BICUBIC),
             transforms.ToTensor(),
             transforms.Normalize(mean=[0.48145466, 0.4578275, 0.40821073],
                                  std=[0.26862954, 0.26130258, 0.27577711])  # CLIP标准归一化
@@ -76,26 +83,25 @@ class ModelLoader:
 
     def _load_config(self, config_path: str) -> dict:
         """加载模型配置文件
-        
+
         Args:
             config_path: 配置文件路径
-            
+
         Returns:
             dict: 配置字典
         """
         try:
-            logger.info(f"正在加载配置: {config_path}")
+            logger.info("正在加载配置: %s", config_path)  # 改为懒格式化
             config = load_config(config_path)
-            # 确保返回字典类型
             if hasattr(config, '__dict__'):
-                return vars(config)  # 使用vars()替代__dict__更规范
-            elif isinstance(config, dict):
+                return vars(config)
+            if isinstance(config, dict):
                 return config
-            else:
-                raise ValueError("配置必须是字典或具有__dict__属性的对象")
+            raise ValueError("配置必须是字典或具有__dict__属性的对象")
         except Exception as e:
-            logger.error(f"加载配置失败: {str(e)}")
-            raise RuntimeError(f"加载配置失败：{str(e)}")
+            logger.error("加载配置失败: %s", str(e))  # 改为懒格式化
+            raise RuntimeError(f"加载配置失败：{str(e)}") from e  # 添加 from e
+
     def _load_model(self, model_path: str) -> torch.nn.Module:
         try:
             model_config = self.config.get('model')
@@ -103,7 +109,7 @@ class ModelLoader:
                 raise ValueError("配置中缺少model配置")
             if callable(model_config):
                 raise ValueError("model配置应该是字典或对象而不是函数")
-        
+
             # 确保model_config是有效的配置对象/字典
             if isinstance(model_config, dict):
                 # 如果是字典，检查必要参数
@@ -113,26 +119,33 @@ class ModelLoader:
                         raise ValueError(f"model配置缺少必要参数: {key}")
             elif not hasattr(model_config, '__dict__'):
                 raise ValueError("model配置必须是字典或具有__dict__属性的对象")
-        
+
             # 确保MegaLLM被正确实例化
             try:
                 # 修改：确保MegaLLM是一个类而不是函数
                 if callable(MegaLLM) and not isinstance(MegaLLM, type):
                     raise TypeError("MegaLLM应该是一个类，但它是一个函数")
-                
+
                 model = MegaLLM(model_config)
-                
+
                 # 添加类型检查
                 if not isinstance(model, torch.nn.Module):
-                    raise TypeError(f"模型必须是torch.nn.Module的实例，而不是{type(model)}")
-                    
+                    raise TypeError(
+                        f"模型必须是torch.nn.Module的实例，而不是{type(model)}")
+
                 # 确保模型有eval方法
-                if not hasattr(model, 'eval') or not callable(getattr(model, 'eval')):
+                if not hasattr(
+                    model,
+                    'eval') or not callable(
+                    getattr(
+                        model,
+                        'eval')):
                     raise AttributeError("模型缺少eval方法")
-                    
+
                 # 检查model是否为有效的PyTorch模型
                 if not isinstance(model, torch.nn.Module):
-                    raise TypeError(f"模型实例化失败，得到的是{type(model)}而不是torch.nn.Module")
+                    raise TypeError(
+                        f"模型实例化失败，得到的是{type(model)}而不是torch.nn.Module")
             except Exception as e:
                 logger.error(f"模型实例化失败: {str(e)}")
                 raise ValueError(f"无法创建MegaLLM模型实例: {str(e)}")
@@ -145,12 +158,16 @@ class ModelLoader:
                 # 修改1: 添加安全全局变量
                 from utils.config import Config
                 with torch.serialization.safe_globals([Config]):
-                    checkpoint = torch.load(model_path, map_location=self.device, weights_only=True)
+                    checkpoint = torch.load(
+                        model_path, map_location=self.device, weights_only=True)
             except Exception as e:
                 # 修改2: 如果安全加载失败，尝试非安全加载（仅当信任模型来源时）
                 logger.warning(f"安全加载失败，尝试非安全加载: {str(e)}")
                 # 直接使用非安全加载
-                checkpoint = torch.load(model_path, map_location=self.device, weights_only=False)
+                checkpoint = torch.load(
+                    model_path,
+                    map_location=self.device,
+                    weights_only=False)
 
             # 添加状态字典检查
             if isinstance(checkpoint, dict):
@@ -159,7 +176,7 @@ class ModelLoader:
                     state_dict = checkpoint['model_state_dict']
                 else:
                     state_dict = checkpoint
-                
+
                 # 处理键名不匹配问题
                 new_state_dict = {}
                 for k, v in state_dict.items():
@@ -168,7 +185,7 @@ class ModelLoader:
                         new_state_dict[new_k] = v
                     else:
                         new_state_dict[k] = v
-                
+
                 # 加载修改后的状态字典
                 model.load_state_dict(new_state_dict, strict=False)
             else:
@@ -192,9 +209,8 @@ class ModelLoader:
                     try:
                         import bitsandbytes as bnb
                         logger.info("正在进行8-bit量化...")
-                        model = bnb.optim.GlobalOptimManager.get_instance().register_module_override(
-                            model, 'weight', {'optim_bits': 8}
-                        )
+                        model = bnb.optim.GlobalOptimManager.get_instance(
+                        ).register_module_override(model, 'weight', {'optim_bits': 8})
                         logger.info("8-bit量化完成")
                     except ImportError:
                         logger.warning("bitsandbytes未安装，跳过8-bit量化")
@@ -222,9 +238,14 @@ class ModelLoader:
                         logger.warning(f"模型编译失败: {str(e)}")
 
             # 确保模型处于评估模式 (修复eval调用)
-            if not hasattr(model, 'eval') or not callable(getattr(model, 'eval')):
+            if not hasattr(
+                model,
+                'eval') or not callable(
+                getattr(
+                    model,
+                    'eval')):
                 raise AttributeError(f"模型对象没有eval方法，类型为: {type(model)}")
-            
+
             model = model.eval()
 
             # 预热模型
@@ -245,21 +266,24 @@ class ModelLoader:
             logger.info("正在预热模型...")
             # 创建一个小的随机输入进行预热
             dummy_input = torch.randint(0, 100, (1, 10)).to(self.device)
-            
+
             # 检查模型是否有embedding_dim属性
             vocab_size = 100
             if hasattr(model, 'embedding_dim'):
                 vocab_size = model.embedding_dim
             elif hasattr(model, 'config') and hasattr(model.config, 'vocab_size'):
                 vocab_size = model.config.vocab_size
-            
+
             dummy_input = torch.randint(0, vocab_size, (1, 10)).to(self.device)
             dummy_image = torch.randn(1, 3, 224, 224).to(self.device)
 
             # 使用torch.cuda.synchronize确保GPU操作完成
             with torch.no_grad():
                 for _ in range(3):  # 预热几次
-                    _ = model.generate(input_ids=dummy_input, images=dummy_image, max_length=20)
+                    _ = model.generate(
+                        input_ids=dummy_input,
+                        images=dummy_image,
+                        max_length=20)
                     if self.device == 'cuda':
                         torch.cuda.synchronize()
 
@@ -267,7 +291,10 @@ class ModelLoader:
         except Exception as e:
             logger.warning(f"模型预热失败: {str(e)}")
 
-    def process_image(self, image: Union[str, Image.Image, torch.Tensor]) -> torch.Tensor:
+    def process_image(self,
+                      image: Union[str,
+                                   Image.Image,
+                                   torch.Tensor]) -> torch.Tensor:
         """处理输入图像为模型可接受的张量
 
         Args:
@@ -309,9 +336,17 @@ class ModelLoader:
             logger.error(f"图像处理失败: {str(e)}")
             raise RuntimeError(f"图像处理失败：{str(e)}")
 
-    def predict(self, tokenizer: Tokenizer, text: str, image: Optional[Union[str, Image.Image, torch.Tensor]] = None,
-               history: Optional[List[str]] = None, temperature: float = 1.0, top_p: float = 0.95,
-               max_length: Optional[int] = None, num_beams: int = 1):
+    def predict(self,
+                tokenizer: Tokenizer,
+                text: str,
+                image: Optional[Union[str,
+                                      Image.Image,
+                                      torch.Tensor]] = None,
+                history: Optional[List[str]] = None,
+                temperature: float = 1.0,
+                top_p: float = 0.95,
+                max_length: Optional[int] = None,
+                num_beams: int = 1):
         """
         执行推理
 
@@ -334,10 +369,13 @@ class ModelLoader:
 
             # 处理输入
             input_text = " ".join(history + [text])
-            input_ids = torch.tensor(tokenizer.encode(input_text).ids).unsqueeze(0).to(self.device)
+            input_ids = torch.tensor(
+                tokenizer.encode(input_text).ids).unsqueeze(0).to(
+                self.device)
 
             # 处理图像（如果有）
-            image_tensor = self.process_image(image) if image is not None else None
+            image_tensor = self.process_image(
+                image) if image is not None else None
 
             # 获取最大长度
             if max_length is None:
@@ -358,7 +396,8 @@ class ModelLoader:
                     no_repeat_ngram_size=2
                 )
 
-                response = tokenizer.decode(output_ids[0].tolist(), skip_special_tokens=True)
+                response = tokenizer.decode(
+                    output_ids[0].tolist(), skip_special_tokens=True)
                 result = response[len(input_text):].strip()
 
                 logger.info(f"生成完成，耗时: {time.time() - start_time:.2f}秒")
@@ -368,8 +407,12 @@ class ModelLoader:
             logger.error(f"生成失败: {str(e)}")
             raise RuntimeError(f"生成失败：{str(e)}")
 
-    def batch_predict(self, tokenizer: Tokenizer, queries: List[str],
-                      images: Optional[List[Union[str, Image.Image, torch.Tensor]]] = None,
+    def batch_predict(self,
+                      tokenizer: Tokenizer,
+                      queries: List[str],
+                      images: Optional[List[Union[str,
+                                                  Image.Image,
+                                                  torch.Tensor]]] = None,
                       histories: Optional[List[List[str]]] = None,
                       temperature: float = 1.0,
                       top_p: float = 0.95,
@@ -398,10 +441,12 @@ class ModelLoader:
 
             # 确保历史记录与查询数量匹配
             if len(histories) != batch_size:
-                raise ValueError(f"历史记录数量({len(histories)})与查询数量({batch_size})不匹配")
+                raise ValueError(
+                    f"历史记录数量({len(histories)})与查询数量({batch_size})不匹配")
 
             # 处理输入
-            input_texts = [" ".join(history + [query]) for history, query in zip(histories, queries)]
+            input_texts = [" ".join(history + [query])
+                           for history, query in zip(histories, queries)]
             encoded = [tokenizer.encode(text) for text in input_texts]
             max_len = max(len(e.ids) for e in encoded)
 
@@ -416,9 +461,11 @@ class ModelLoader:
             image_tensors = None
             if images:
                 if len(images) != batch_size:
-                    raise ValueError(f"图像数量({len(images)})与查询数量({batch_size})不匹配")
+                    raise ValueError(
+                        f"图像数量({len(images)})与查询数量({batch_size})不匹配")
 
-                image_tensors = torch.cat([self.process_image(img) for img in images], dim=0)
+                image_tensors = torch.cat(
+                    [self.process_image(img) for img in images], dim=0)
 
             # 获取最大长度
             if max_length is None:
@@ -472,9 +519,12 @@ class ModelLoader:
         try:
             history = history or []
             input_text = " ".join(history + [query])
-            input_ids = torch.tensor(tokenizer.encode(input_text).ids).unsqueeze(0).to(self.device)
+            input_ids = torch.tensor(
+                tokenizer.encode(input_text).ids).unsqueeze(0).to(
+                self.device)
 
-            image_tensor = self.process_image(image) if image is not None else None
+            image_tensor = self.process_image(
+                image) if image is not None else None
 
             if max_length is None:
                 max_length = self.config.get('max_length', 100)

@@ -36,10 +36,11 @@ class ModelConfig:
     pad_token_id: int = 0
     model_path: str = "longformer_pretrained.pth"  # 模型路径
 
-@dataclass 
+
+@dataclass
 class TrainingConfig:
     """训练过程配置类
-    
+
     属性:
         batch_size (int): 训练批次大小
         lr (float): 初始学习率
@@ -74,7 +75,7 @@ class TrainingConfig:
 @dataclass
 class Config:
     """整合配置容器类
-    
+
     属性:
         model (ModelConfig): 模型结构配置
         training (TrainingConfig): 训练过程配置
@@ -85,10 +86,10 @@ class Config:
 
 def load_config(path):
     """从JSON文件加载配置
-    
+
     参数:
         path (str): JSON配置文件路径
-        
+
     返回:
         Config: 配置对象
     """
